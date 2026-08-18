@@ -2,6 +2,22 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<script>
+// 카카오톡 인앱브라우저면 바로 외부 브라우저(Safari/Chrome)로 튕겨나감 — 원래 브라우저에서만
+// 홈 화면 추가/설치가 정상 작동해서, 아예 처음부터 거기서 열리게 함. (카카오 비공식 스킴이라
+// 나중에 막힐 수 있음 — 막히면 installBanner의 "다른 브라우저로 열기" 안내가 대신 뜸)
+(function(){
+  var ua = navigator.userAgent.toLowerCase();
+  if (/kakaotalk/.test(ua)) {
+    location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
+    setTimeout(function(){
+      location.href = /ipad|iphone|ipod/.test(ua)
+        ? 'kakaoweb://closeBrowser'
+        : 'kakaotalk://inappbrowser/close';
+    });
+  }
+})();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <meta name="theme-color" content="#4B5D34">
 <title>시골손맛 — 주문하기</title>
