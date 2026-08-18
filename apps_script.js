@@ -1,0 +1,58 @@
+// 시골손맛 주문 접수 - Google Apps Script
+// 사용법: 구글시트 > 확장 프로그램 > Apps Script 에 이 코드를 통째로 붙여넣고
+// "배포 > 새 배포"까지 진행하면 됨 (기존에 배포한 적 있으면 "관리" 톱니에서
+// 버전을 "새 버전"으로 올려서 배포해야 코드가 실제로 반영됨).
+//
+// 컬럼 순서는 파이썬 쪽 image_order.py의 "로젠택배양식" 시트랑 똑같이 맞춰뒀음:
+// 구매자명, 수취인명, 옵션정보, 수량, 연락처1, 연락처2, 배송주소, 상세주소,
+// 우편번호, 송하인번호, 배송메모, 발송예정일  (+ 접수시각/합계금액/광고동의는 참고용으로 뒤에 추가)
+
+function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
+  if (!sheet) {
+    sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet("주문");
+    sheet.appendRow([
+      "구매자명", "수취인명", "옵션정보", "수량", "연락처1", "연락처2",
+      "배송주소", "상세주소", "우편번호", "송하인번호", "배송메모", "발송예정일",
+      "접수시각", "합계금액", "광고수신동의", "동의시각"
+    ]);
+  }
+
+  var data = JSON.parse(e.postData.contents);
+  var sameParty = data.sameParty !== false;
+
+  // 구매자명/송하인번호: "다른 분이 받으신다"고 체크했으면 보내는사람(주문자) 정보를 씀.
+  // 같은 분이면 수취인 정보를 그대로 구매자로도 씀.
+  var buyerName = sameParty ? (data.name || "") : (data.buyerName || "");
+  var senderPhone = sameParty ? (data.phone || "") : (data.buyerPhone || "");
+
+  sheet.appendRow([
+    buyerName,                 // 구매자명
+    data.name || "",           // 수취인명
+    data.productText || "",    // 옵션정보
+    1,                         // 수량 (박스 개수 - 상품 개수는 옵션정보 텍스트 안에 이미 포함됨)
+    data.phone || "",          // 연락처1 (수취인 연락처)
+    "",                        // 연락처2 (이 폼에서는 안 받음)
+    data.address || "",        // 배송주소 (다음 우편번호 서비스로 검색된 정확한 주소)
+    data.addressDetail || "",  // 상세주소 (동/호수 등, 고객이 직접 입력)
+    data.zipcode || "",        // 우편번호 (다음 우편번호 서비스에서 자동으로 받아옴)
+    senderPhone,                // 송하인번호 (보내는사람 자기 번호)
+    data.note || "",           // 배송메모
+    data.shipDate || "",       // 발송예정일 (고객이 직접 지정 안 했으면 빈칸 - 나중에 직접 정함)
+    new Date(),                 // 접수시각
+    data.totalAmount || 0,      // 합계금액
+    data.marketingConsent ? "동의" : "미동의",
+    data.marketingConsentAt || "",
+  ]);
+
+  return ContentService
+    .createTextOutput(JSON.stringify({ result: "success" }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// 브라우저에서 이 URL로 그냥 접속했을 때(GET) 확인용 응답
+function doGet(e) {
+  return ContentService
+    .createTextOutput("시골손맛 주문 접수 서버가 정상 작동 중입니다.")
+    .setMimeType(ContentService.MimeType.TEXT);
+}

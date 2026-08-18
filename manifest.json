@@ -1,0 +1,24 @@
+{
+  "name": "시골손맛 - 함평 쑥떡 주문",
+  "short_name": "시골손맛",
+  "description": "함평에서 쪄서 그날 보내드리는 쑥인절미, 모시송편, 쑥개떡 주문하기",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#F6F1E4",
+  "theme_color": "#4B5D34",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
