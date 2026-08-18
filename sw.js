@@ -1,7 +1,7 @@
 // 서비스워커: 브라우저 뒤에서 계속 돌면서, 필요한 파일들을 미리 저장해뒀다가
 // 인터넷이 느리거나 끊겨도 앱이 열리게 해주는 역할을 함.
 
-const CACHE_NAME = "sigol-sonmat-v2";
+const CACHE_NAME = "sigol-sonmat-v3";
 const FILES_TO_CACHE = [
   "./index.html",
   "./manifest.json",
@@ -10,6 +10,7 @@ const FILES_TO_CACHE = [
   "./images/songpyeon.png",
   "./images/injeolmi.png",
   "./images/gaetteok.png",
+  "./images/logo.png",
 ];
 
 self.addEventListener("install", (event) => {
