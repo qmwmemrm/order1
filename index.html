@@ -515,7 +515,7 @@ document.getElementById('largeTextToggle').addEventListener('change', (e) => {
     } else if (isIOS) {
       installBanner.style.display = 'flex';
       installBanner.addEventListener('click', () => {
-        alert('아이폰에서 홈 화면에 추가하기\n\n1. 하단 공유 아이콘(⬆️) 탭\n2. 아래로 스크롤해서 "홈 화면에 추가" 선택\n3. "추가" 탭하면 끝!');
+        alert('홈 화면에 추가하시려면\n\n1. 하단 공유 아이콘(⬆️)을 눌러주세요\n2. 아래로 스크롤해서 "홈 화면에 추가"를 선택해주세요\n3. "추가"를 탭하면 끝!');
       });
     } else {
       let deferredInstallPrompt = null;
