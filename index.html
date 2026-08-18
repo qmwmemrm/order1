@@ -57,6 +57,10 @@
     box-shadow:0 3px 0 rgba(0,0,0,0.12);
     transform:rotate(-6deg);
   }
+  .brand-mark{
+    width:72px; height:72px; margin:0 auto 14px; display:block;
+    filter:drop-shadow(0 3px 3px rgba(0,0,0,0.15));
+  }
   header h1{
     font-family:'Noto Serif KR', serif; font-weight:700; font-size:var(--fs-h1); margin:0 0 6px;
     letter-spacing:-0.01em;
@@ -89,7 +93,7 @@
 
   .products{display:flex; flex-direction:column; gap:10px;}
   .product{
-    display:flex; align-items:center; gap:14px;
+    display:flex; flex-wrap:wrap; align-items:center; gap:14px;
     background:var(--white); border:1.5px solid var(--line); border-radius:16px;
     padding:14px 16px; cursor:pointer; transition:border-color .15s, background .15s;
   }
@@ -109,7 +113,7 @@
   .p-price{font-weight:700; font-size:var(--fs-price); white-space:nowrap;}
 
   .qty-row{
-    display:flex; align-items:center; gap:10px; margin-top:10px;
+    display:flex; flex:0 0 100%; align-items:center; gap:10px; margin-top:10px;
     padding-top:10px; border-top:1px solid rgba(255,255,255,0.25);
   }
   .product:not(.selected) .qty-row{display:none;}
@@ -264,6 +268,9 @@
   }
 
   .demo-tag{text-align:center; font-size:11px; color:var(--ink-soft); padding:14px 20px 0;}
+
+  #installBanner{width:calc(100% - 40px); cursor:pointer; font-family:inherit;}
+  #installBanner:active{background:var(--paper-soft);}
 </style>
 </head>
 <body>
@@ -272,7 +279,7 @@
 
   <div class="view show" id="orderView">
     <header>
-      <div class="seal">시골<br>손맛</div>
+      <img class="brand-mark" src="images/logo.png" alt="시골손맛 로고">
       <h1>시골손맛</h1>
       <p>함평에서 쪄서 그날 보내드리는 쑥떡</p>
     </header>
@@ -284,6 +291,10 @@
         <span class="switch-slider"></span>
       </label>
     </div>
+
+    <button type="button" class="text-toggle" id="installBanner" style="display:none;">
+      <span>📲 홈 화면에 추가하고 편하게 주문하기</span>
+    </button>
 
     <section>
       <div class="eyebrow">떡 종류 선택</div>
@@ -402,6 +413,11 @@
       <h2>주문 잘 받았어요</h2>
       <p>확인 후 안내 드릴게요.<br>따뜻하게 쪄서 보내드릴게요 🍡</p>
 
+      <div class="review-card" style="text-align:left;">
+        <h3>주문 내역</h3>
+        <div id="finalOrderItems"></div>
+      </div>
+
       <div class="total-card">
         <div class="label">주문 금액</div>
         <div class="amount" id="finalTotal">0원</div>
@@ -466,6 +482,39 @@ document.getElementById('largeTextToggle').addEventListener('change', (e) => {
   document.body.classList.toggle('large-text', e.target.checked);
 });
 
+// ---- 홈 화면에 추가 (PWA 설치) ----
+{
+  const installBanner = document.getElementById('installBanner');
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+  if (!isStandalone) {
+    if (isIOS) {
+      installBanner.style.display = 'flex';
+      installBanner.addEventListener('click', () => {
+        alert('아이폰에서 홈 화면에 추가하기\n\n1. 하단 공유 아이콘(⬆️) 탭\n2. 아래로 스크롤해서 "홈 화면에 추가" 선택\n3. "추가" 탭하면 끝!');
+      });
+    } else {
+      let deferredInstallPrompt = null;
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredInstallPrompt = e;
+        installBanner.style.display = 'flex';
+      });
+      installBanner.addEventListener('click', async () => {
+        if (!deferredInstallPrompt) return;
+        deferredInstallPrompt.prompt();
+        await deferredInstallPrompt.userChoice;
+        deferredInstallPrompt = null;
+        installBanner.style.display = 'none';
+      });
+      window.addEventListener('appinstalled', () => {
+        installBanner.style.display = 'none';
+      });
+    }
+  }
+}
+
 // ---- 다른 날짜에 발송 체크박스 ----
 const shipDateInput = document.getElementById('shipDate');
 {
@@ -499,6 +548,13 @@ function itemName(p, sel){
 }
 function itemPrice(p, sel){
   return p.sizes ? p.sizes.find(s => s.count === sel.size).price : p.price;
+}
+function orderItemsHTML(){
+  return Object.keys(selections).map(id => {
+    const p = PRODUCTS.find(p => p.id === id);
+    const sel = selections[id];
+    return `<div class="review-row"><span class="k">${itemName(p, sel)}</span><span class="v">${sel.qty}개 · ${(itemPrice(p, sel)*sel.qty).toLocaleString()}원</span></div>`;
+  }).join('');
 }
 
 function renderProducts(){
@@ -669,11 +725,7 @@ function goToReview(){
   }
 
   const reviewItems = document.getElementById('reviewItems');
-  reviewItems.innerHTML = Object.keys(selections).map(id => {
-    const p = PRODUCTS.find(p => p.id === id);
-    const sel = selections[id];
-    return `<div class="review-row"><span class="k">${itemName(p, sel)}</span><span class="v">${sel.qty}개 · ${(itemPrice(p, sel)*sel.qty).toLocaleString()}원</span></div>`;
-  }).join('');
+  reviewItems.innerHTML = orderItemsHTML();
   document.getElementById('revTotal').textContent = calcTotal().toLocaleString() + '원';
 
   document.getElementById('orderBar').style.display = 'none';
@@ -715,6 +767,7 @@ async function submitOrder(){
   finalBtn.textContent = '접수하는 중...';
 
   const finish = () => {
+    document.getElementById('finalOrderItems').innerHTML = orderItemsHTML();
     document.getElementById('finalTotal').textContent = total.toLocaleString() + '원';
     document.getElementById('reviewBar').style.display = 'none';
     showView('confirmView');
