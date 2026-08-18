@@ -487,9 +487,16 @@ document.getElementById('largeTextToggle').addEventListener('change', (e) => {
   const installBanner = document.getElementById('installBanner');
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isInAppBrowser = /kakaotalk|instagram|fban|fbav|line\/|naver/i.test(navigator.userAgent);
 
   if (!isStandalone) {
-    if (isIOS) {
+    if (isInAppBrowser) {
+      installBanner.querySelector('span').textContent = '📲 우측 상단 메뉴에서 "다른 브라우저로 열기" 해주세요';
+      installBanner.style.display = 'flex';
+      installBanner.addEventListener('click', () => {
+        alert('지금 보고 계신 창(카카오톡/인스타그램 등 안의 브라우저)에서는\n홈 화면 추가가 되지 않아요.\n\n1. 화면 우측 상단의 "···" 또는 공유 아이콘 탭\n2. "다른 브라우저로 열기" (또는 "Safari로 열기" / "Chrome으로 열기") 선택\n3. 열린 Safari/Chrome에서 다시 이 배너를 눌러 홈 화면에 추가');
+      });
+    } else if (isIOS) {
       installBanner.style.display = 'flex';
       installBanner.addEventListener('click', () => {
         alert('아이폰에서 홈 화면에 추가하기\n\n1. 하단 공유 아이콘(⬆️) 탭\n2. 아래로 스크롤해서 "홈 화면에 추가" 선택\n3. "추가" 탭하면 끝!');
