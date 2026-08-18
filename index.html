@@ -510,12 +510,12 @@ document.getElementById('largeTextToggle').addEventListener('change', (e) => {
       installBanner.querySelector('span').textContent = '📲 홈 화면에 추가하시려면 "···"을 눌러주세요';
       installBanner.style.display = 'flex';
       installBanner.addEventListener('click', () => {
-        alert('홈 화면에 추가하시려면\n\n1. 화면 우측 상단의 "···" (또는 공유 아이콘)을 눌러주세요\n2. "다른 브라우저로 열기" (또는 "Safari로 열기" / "Chrome으로 열기")를 선택해주세요\n3. 열린 Safari/Chrome에서 다시 이 배너를 눌러주시면 홈 화면에 추가돼요');
+        alert('홈 화면에 추가하시려면\n\n1. "···" (또는 공유 아이콘)을 눌러주세요\n2. "다른 브라우저로 열기" (또는 "Safari로 열기" / "Chrome으로 열기")를 선택해주세요\n3. 열린 Safari/Chrome에서 다시 이 배너를 눌러주시면 홈 화면에 추가돼요');
       });
     } else if (isIOS) {
       installBanner.style.display = 'flex';
       installBanner.addEventListener('click', () => {
-        alert('홈 화면에 추가하시려면\n\n1. 하단 공유 아이콘(⬆️)을 눌러주세요\n2. 아래로 스크롤해서 "홈 화면에 추가"를 선택해주세요\n3. "추가"를 탭하면 끝!');
+        alert('홈 화면에 추가하시려면\n\n1. 공유 아이콘(⬆️)을 눌러주세요\n2. "더 보기"를 눌러주세요\n3. "홈 화면에 추가"를 선택해주세요\n4. "추가"를 탭하면 끝!');
       });
     } else {
       let deferredInstallPrompt = null;
