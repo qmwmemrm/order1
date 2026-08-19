@@ -88,3 +88,21 @@ function formatOrderSheet(sheet) {
   sheet.getRange(1, 1, lastRow, COLS)
     .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREEN, true, false);
 }
+
+// "주문" 시트를 완전히 지우고 헤더+서식이 딱 맞는 깨끗한 상태로 새로 만듦.
+// 행만 지우면 시트 자체는 남아있어서 헤더가 다시 안 만들어짐 - 그래서 탭 삭제까지 자동으로 처리함.
+// 쓰는 법: 편집기 상단 함수 선택 드롭다운에서 "resetOrderSheet" 선택 → ▶ 실행.
+// ⚠️ 지금까지 쌓인 주문 데이터가 전부 지워짐 - 테스트 데이터만 있을 때만 실행할 것.
+function resetOrderSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var old = ss.getSheetByName("주문");
+  if (old) ss.deleteSheet(old);
+
+  var sheet = ss.insertSheet("주문");
+  sheet.appendRow([
+    "구매자명", "수취인명", "옵션정보", "수량", "연락처1", "연락처2",
+    "배송주소", "상세주소", "우편번호", "송하인번호", "배송메모", "발송예정일",
+    "접수시각", "합계금액", "광고수신동의", "동의시각"
+  ]);
+  formatOrderSheet(sheet);
+}
