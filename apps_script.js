@@ -9,6 +9,16 @@
 // "입금확인"(맨 마지막 칸)은 손님이 채우는 게 아니라 사장님이 입금 확인 후 직접 체크하는 칸.
 // pyorder 쪽에서 이 칸이 체크된 행만 가져가게 되어있음 - 계좌이체라 자동 확인이 안 돼서 그럼.
 
+// 연락처1/우편번호/송하인번호/주문번호: 숫자로만 이루어진 문자열을 그냥 appendRow하면
+// 시트가 "숫자"로 자동 인식해서 앞자리 0을 없애버림(01099998888 -> 1099998888).
+// 열 서식을 미리 텍스트로 걸어두는 방식은 시도해봤지만 실제로 효과가 없었음(재배포 후에도
+// 재현됨) - 대신 값 앞에 작은따옴표(')를 붙여서 쓰면 시트가 그 값을 문자로 강제 인식하고
+// 작은따옴표 자체는 저장되지 않음. Apps Script로 값을 쓸 때 텍스트를 강제하는 표준적인 방법.
+function forceText_(v) {
+  v = (v === null || v === undefined) ? "" : String(v);
+  return v === "" ? "" : ("'" + v);
+}
+
 function doPost(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
   if (!sheet) {
@@ -19,8 +29,6 @@ function doPost(e) {
       "접수시각", "합계금액", "광고수신동의", "동의시각", "입금확인", "주문번호"
     ]);
   }
-  ensureTextColumns(sheet); // appendRow 쓰기 전에 미리 텍스트 서식 걸어둬야 010... 앞자리 0이 안 날아감
-
   var data = JSON.parse(e.postData.contents);
   var sameParty = data.sameParty !== false;
 
@@ -34,12 +42,12 @@ function doPost(e) {
     data.name || "",           // 수취인명
     data.productText || "",    // 옵션정보
     1,                         // 수량 (박스 개수 - 상품 개수는 옵션정보 텍스트 안에 이미 포함됨)
-    data.phone || "",          // 연락처1 (수취인 연락처)
+    forceText_(data.phone),    // 연락처1 (수취인 연락처) - 앞자리 0 보존
     "",                        // 연락처2 (이 폼에서는 안 받음)
     data.address || "",        // 배송주소 (다음 우편번호 서비스로 검색된 정확한 주소)
     data.addressDetail || "",  // 상세주소 (동/호수 등, 고객이 직접 입력)
-    data.zipcode || "",        // 우편번호 (다음 우편번호 서비스에서 자동으로 받아옴)
-    senderPhone,                // 송하인번호 (보내는사람 자기 번호)
+    forceText_(data.zipcode),  // 우편번호 (다음 우편번호 서비스에서 자동으로 받아옴) - 앞자리 0 보존
+    forceText_(senderPhone),   // 송하인번호 (보내는사람 자기 번호) - 앞자리 0 보존
     data.note || "",           // 배송메모
     data.shipDate || "",       // 발송예정일 (고객이 직접 지정 안 했으면 빈칸 - 나중에 직접 정함)
     new Date(),                 // 접수시각
@@ -47,7 +55,7 @@ function doPost(e) {
     data.marketingConsent ? "동의" : "미동의",
     data.marketingConsentAt || "",
     false,                      // 입금확인 (새 주문은 항상 미확인으로 시작, 사장님이 나중에 체크)
-    data.orderNumber || "",     // 주문번호 (손님 화면에 뜨는 6자리 번호, 나중에 주문조회용)
+    forceText_(data.orderNumber), // 주문번호 (손님 화면에 뜨는 6자리 번호, 나중에 주문조회용) - 앞자리 0 보존
   ]);
 
   formatNewOrderRow(sheet, sheet.getLastRow()); // 방금 추가된 행 1개만 서식 (전체 재적용은 느려서 안 함)
@@ -217,23 +225,9 @@ function formatNewOrderRow(sheet, row) {
 // 이제 주문이 들어올 때 자동으로는 안 돌고(느려서 formatNewOrderRow로 대체함),
 // 줄무늬 배경이나 열 너비가 틀어져 보일 때 가끔 수동으로만 돌리면 됨:
 // Apps Script 편집기 상단에서 함수 선택 드롭다운을 "formatOrderSheet"로 바꾸고 ▶ 실행 버튼 한 번 누르면 됨.
-// 연락처1(5)/연락처2(6)/우편번호(9)/송하인번호(10)/주문번호(18): 숫자로만 이루어진 문자열이
-// 그대로 appendRow되면 시트가 "숫자"로 자동 인식해서 앞자리 0을 없애버림(01012341234 → 1012341234).
-// 열 서식을 미리 "일반 텍스트(@)"로 걸어두면 그 뒤로 들어오는 값은 숫자 변환 없이 문자열 그대로 저장됨.
-// getMaxRows()(보통 1000행)로 전체에 걸면 doPost마다 5000칸씩 서식을 다시 씌우느라 느려지므로
-// (formatOrderSheet에서 getMaxRows() 대신 getLastRow()를 쓰게 고쳤던 것과 같은 이유),
-// 현재 마지막 행 기준으로 다음 주문 여유분(50행)만 앞서서 걸어둠 - 매번 실행돼도 가벼움.
-function ensureTextColumns(sheet) {
-  var lastRow = Math.max(sheet.getLastRow(), 1);
-  [5, 6, 9, 10, 18].forEach(function (col) {
-    sheet.getRange(1, col, lastRow + 50, 1).setNumberFormat("@");
-  });
-}
-
 function formatOrderSheet(sheet) {
   sheet = sheet || SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
   if (!sheet) return;
-  ensureTextColumns(sheet);
 
   var COLS = 18;
   sheet.getRange(1, 1, 1, COLS)
