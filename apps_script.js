@@ -156,7 +156,7 @@ function confirmPaymentByAmount(p) {
     var rowBuyer = String(row[0] || ""); // A열: 구매자명
     if (rowConfirmed === true) continue;
     if (Number(rowAmount) !== amount) continue;
-    matches.push({ sheetRow: i + 2, buyer: rowBuyer });
+    matches.push({ sheetRow: i + 2, buyer: rowBuyer, productText: String(row[2] || "") });
   }
 
   if (name && matches.length > 1) {
@@ -174,6 +174,7 @@ function confirmPaymentByAmount(p) {
     sheet.getRange(matches[0].sheetRow, 17).setValue(true);
     result.ok = true;
     result.message = "입금확인 처리됨: " + matches[0].buyer + " / " + amount + "원";
+    sendAlimtalkNotification_(matches[0].buyer, matches[0].productText, amount);
   }
   return jsonOut(result);
 }
@@ -356,6 +357,83 @@ function getOrderForEdit_(p) {
   }
   result.message = "해당 번호의 주문을 찾을 수 없어요";
   return jsonOut(result);
+}
+
+// 시트에서 "입금확인" 체크박스를 사장님이 직접 손으로 클릭했을 때도 알림톡이 가게 하는
+// 트리거. Apps Script의 onEdit(e)는 특별한 이름이라 시트를 편집할 때마다 자동 실행됨 -
+// 별도로 트리거 등록 안 해도 됨(단순 트리거). 다만 단순 트리거는 UrlFetchApp 같은 외부
+// 호출 권한이 제한적일 수 있어서, 안 되면 편집기에서 "트리거" 메뉴로 설치형 트리거를
+// 이 함수 이름으로 하나 등록해줘야 함(스프레드시트 수정 시 실행).
+function onEdit(e) {
+  if (!e || !e.range) return;
+  var sheet = e.range.getSheet();
+  if (sheet.getName() !== "주문") return;
+  if (e.range.getColumn() !== 17) return; // Q열: 입금확인
+  if (e.value !== "TRUE") return; // 체크(true)로 바뀐 경우만
+  var row = e.range.getRow();
+  if (row < 2) return;
+  var rowData = sheet.getRange(row, 1, 1, 14).getValues()[0];
+  sendAlimtalkNotification_(String(rowData[0] || ""), String(rowData[2] || ""), rowData[13]);
+}
+
+// SOLAPI를 통해 카카오 알림톡으로 사장님 폰에 "입금확인된 주문" 알림을 보냄.
+// 자동확인(confirmPaymentByAmount)이든 사장님이 시트에서 직접 체크박스를 누르든
+// 둘 다 이 함수를 거쳐서 알림이 감.
+//
+// 필요한 스크립트 속성(프로젝트 설정 > 스크립트 속성에서 추가):
+// SOLAPI_API_KEY, SOLAPI_API_SECRET, SOLAPI_PFID, SOLAPI_TEMPLATE_ID,
+// SOLAPI_SENDER_PHONE(솔라피에 사전등록된 발신번호), SOLAPI_RECEIVER_PHONE(알림 받을 사장님 번호)
+//
+// 템플릿 변수 이름은 #{이름}/#{상품}/#{금액}으로 등록했다고 가정함 - 실제 등록한 변수명이
+// 다르면 아래 variables 객체의 키를 그거에 맞게 고쳐야 함.
+function sendAlimtalkNotification_(buyerName, productText, amount) {
+  var props = PropertiesService.getScriptProperties();
+  var apiKey = props.getProperty("SOLAPI_API_KEY");
+  var apiSecret = props.getProperty("SOLAPI_API_SECRET");
+  var pfId = props.getProperty("SOLAPI_PFID");
+  var templateId = props.getProperty("SOLAPI_TEMPLATE_ID");
+  var senderPhone = props.getProperty("SOLAPI_SENDER_PHONE");
+  var receiverPhone = props.getProperty("SOLAPI_RECEIVER_PHONE");
+  // 설정이 아직 안 끝났으면 조용히 건너뜀 - 알림톡 실패 때문에 입금확인 처리 자체가
+  // 실패한 것처럼 보이면 안 되니까(이미 입금확인은 이 함수 호출 전에 끝난 상태).
+  if (!apiKey || !apiSecret || !pfId || !templateId || !senderPhone || !receiverPhone) return;
+
+  var date = new Date().toISOString();
+  var salt = Utilities.getUuid();
+  var rawSignature = Utilities.computeHmacSha256Signature(date + salt, apiSecret);
+  var signature = rawSignature.map(function (b) {
+    return ("0" + (b & 0xFF).toString(16)).slice(-2);
+  }).join("");
+
+  var payload = {
+    message: {
+      to: receiverPhone,
+      from: senderPhone,
+      kakaoOptions: {
+        pfId: pfId,
+        templateId: templateId,
+        variables: {
+          "#{이름}": buyerName || "",
+          "#{상품}": productText || "",
+          "#{금액}": String(amount || "")
+        }
+      }
+    }
+  };
+
+  try {
+    UrlFetchApp.fetch("https://api.solapi.com/messages/v4/send", {
+      method: "post",
+      contentType: "application/json",
+      headers: {
+        Authorization: "HMAC-SHA256 apiKey=" + apiKey + ", date=" + date + ", salt=" + salt + ", signature=" + signature
+      },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true, // 실패해도 예외로 안 터지게(입금확인 처리에 영향 없도록)
+    });
+  } catch (err) {
+    // 알림톡 발송 실패는 무시함 - 입금확인 자체는 이미 정상 처리된 뒤라 손님/사장님 업무에 지장 없음
+  }
 }
 
 function maskAddress_(addr) {
