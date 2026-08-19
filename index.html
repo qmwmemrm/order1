@@ -908,8 +908,7 @@ async function checkMyInquiry(){
         <div class="review-row"><span class="k">문의 내용</span><span class="v">${data.text}</span></div>
         <div class="review-row"><span class="k">접수일시</span><span class="v">${data.askedAt}</span></div>
         ${data.answer
-          ? `<div class="review-row"><span class="k">답변</span><span class="v">${data.answer}</span></div>
-             <div class="review-row"><span class="k">답변일시</span><span class="v">${data.answeredAt}</span></div>`
+          ? `<div class="review-row"><span class="k">답변</span><span class="v">${data.answer}</span></div>`
           : `<div class="review-row"><span class="k">상태</span><span class="v">아직 답변 대기 중이에요</span></div>`
         }
       </div>

@@ -515,8 +515,8 @@ function submitInquiry_(data) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("문의");
   if (!sheet) {
     sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet("문의");
-    sheet.appendRow(["고객명", "연락처", "문의내용", "접수시각", "답변내용", "답변시각"]);
-    sheet.getRange(1, 1, 1, 6).setFontWeight("bold").setBackground("#4B5D34").setFontColor("#FFFFFF");
+    sheet.appendRow(["고객명", "연락처", "문의내용", "접수시각", "답변내용"]);
+    sheet.getRange(1, 1, 1, 5).setFontWeight("bold").setBackground("#4B5D34").setFontColor("#FFFFFF");
     sheet.setFrozenRows(1);
     sheet.setColumnWidth(3, 320);
     sheet.setColumnWidth(5, 320);
@@ -526,7 +526,6 @@ function submitInquiry_(data) {
     forceText_(data.inquiryPhone),
     forceText_(data.inquiryText),
     new Date(),
-    "",
     "",
   ]);
   return ContentService.createTextOutput(JSON.stringify({ result: "success" })).setMimeType(ContentService.MimeType.JSON);
@@ -560,7 +559,7 @@ function checkInquiry_(p) {
     return jsonOut(result);
   }
 
-  var data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+  var data = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
   for (var i = data.length - 1; i >= 0; i--) { // 최근 문의부터 확인
     var row = data[i];
     if (String(row[0] || "").trim() !== name) continue;
@@ -569,7 +568,6 @@ function checkInquiry_(p) {
     result.text = row[2];
     result.askedAt = formatDateVal_(row[3]);
     result.answer = row[4] || "";
-    result.answeredAt = row[4] ? formatDateVal_(row[5]) : "";
     return jsonOut(result);
   }
   result.message = "해당 성함/연락처로 접수된 문의를 찾을 수 없어요";
