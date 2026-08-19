@@ -184,8 +184,8 @@ function checkRateLimit_(key, maxPerMinute) {
 function lookupOrderByNumber(p) {
   var result = { found: false };
 
-  // 1분에 20번 이상 조회되면 주문번호 전수조사(브루트포스) 시도로 보고 잠깐 막음.
-  if (!checkRateLimit_("lookup_rl", 20)) {
+  // 1분에 60번 이상 조회되면 주문번호 전수조사(브루트포스) 시도로 보고 잠깐 막음.
+  if (!checkRateLimit_("lookup_rl", 60)) {
     result.message = "너무 많은 조회가 있었어요. 잠시 후 다시 시도해주세요.";
     return jsonOut(result);
   }
