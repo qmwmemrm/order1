@@ -279,6 +279,13 @@
   .total-card .label{font-size:13px; opacity:0.85;}
   .total-card .amount{font-family:'Noto Serif KR', serif; font-size:28px; font-weight:700; margin-top:4px;}
 
+  .order-number-card{background:var(--persimmon); color:#fff; border-radius:16px; padding:18px; margin-bottom:16px; text-align:center;}
+  .order-number-card .label{font-size:13px; opacity:0.9;}
+  .order-number-card .number-row{display:flex; align-items:center; justify-content:center; gap:10px; margin-top:6px;}
+  .order-number-card .number-row span{font-family:'Noto Serif KR', serif; font-size:30px; font-weight:700; letter-spacing:2px;}
+  .order-number-card .copy-btn{background:#fff; color:var(--persimmon); border-color:#fff;}
+  .order-number-card .hint{font-size:12px; opacity:0.9; margin-top:10px; line-height:1.5;}
+
   .bank-card{background:var(--paper-soft); border:1.5px solid #E6DDBD; border-radius:16px; padding:18px; text-align:left; margin-bottom:20px;}
   .bank-card h3{margin:0 0 12px; font-size:14px; color:var(--mugwort-deep); font-weight:700;}
   body.large-text .bank-card h3{font-size:16.5px;}
@@ -445,6 +452,15 @@
       <h2>주문 잘 받았어요</h2>
       <p>따뜻하게 쪄서 보내드릴게요 🍡</p>
 
+      <div class="order-number-card">
+        <div class="label">주문번호</div>
+        <div class="number-row">
+          <span id="finalOrderNumber">------</span>
+          <button type="button" class="copy-btn" id="copyOrderNumberBtn" data-copy="">복사</button>
+        </div>
+        <div class="hint">나중에 주문 확인하실 때 필요해요. 화면 캡처(스크린샷)로 저장해두시면 편해요.</div>
+      </div>
+
       <div class="review-card" style="text-align:left;">
         <h3>주문 내역</h3>
         <div id="finalOrderItems"></div>
@@ -514,18 +530,22 @@ document.getElementById('largeTextToggle').addEventListener('change', (e) => {
   document.body.classList.toggle('large-text', e.target.checked);
 });
 
-document.getElementById('copyAccountBtn').addEventListener('click', (e) => {
-  const btn = e.currentTarget;
-  navigator.clipboard.writeText(btn.dataset.copy).then(() => {
-    const original = btn.textContent;
-    btn.textContent = '복사됨';
-    btn.classList.add('copied');
-    setTimeout(() => {
-      btn.textContent = original;
-      btn.classList.remove('copied');
-    }, 1500);
+function bindCopyButton(id){
+  document.getElementById(id).addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    navigator.clipboard.writeText(btn.dataset.copy).then(() => {
+      const original = btn.textContent;
+      btn.textContent = '복사됨';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = original;
+        btn.classList.remove('copied');
+      }, 1500);
+    });
   });
-});
+}
+bindCopyButton('copyAccountBtn');
+bindCopyButton('copyOrderNumberBtn');
 
 // ---- 홈 화면에 추가 (PWA 설치) ----
 {
@@ -800,8 +820,12 @@ function backToOrder(){
 async function submitOrder(){
   const marketingConsent = document.getElementById('marketingConsent').checked;
   const total = calcTotal();
+  // 6자리 랜덤 주문번호 - 서버 응답을 못 읽는 구조(no-cors)라 여기서 미리 만들어서
+  // 접수 데이터에 같이 실어보내고, 화면에도 그대로 보여줌 (구글시트에도 같은 값 저장됨)
+  const orderNumber = String(Math.floor(100000 + Math.random() * 900000));
 
   const orderData = {
+    orderNumber: orderNumber,
     name: document.getElementById('name').value.trim(),
     phone: document.getElementById('phone').value.trim(),
     sameParty: sameParty,
@@ -824,6 +848,8 @@ async function submitOrder(){
   finalBtn.textContent = '접수하는 중...';
 
   const finish = () => {
+    document.getElementById('finalOrderNumber').textContent = orderNumber;
+    document.getElementById('copyOrderNumberBtn').dataset.copy = orderNumber;
     document.getElementById('finalOrderItems').innerHTML = orderItemsHTML();
     document.getElementById('finalTotal').textContent = total.toLocaleString() + '원';
     document.getElementById('reviewBar').style.display = 'none';

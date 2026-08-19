@@ -16,7 +16,7 @@ function doPost(e) {
     sheet.appendRow([
       "구매자명", "수취인명", "옵션정보", "수량", "연락처1", "연락처2",
       "배송주소", "상세주소", "우편번호", "송하인번호", "배송메모", "발송예정일",
-      "접수시각", "합계금액", "광고수신동의", "동의시각", "입금확인"
+      "접수시각", "합계금액", "광고수신동의", "동의시각", "입금확인", "주문번호"
     ]);
   }
 
@@ -45,6 +45,7 @@ function doPost(e) {
     data.totalAmount || 0,      // 합계금액
     data.marketingConsent ? "동의" : "미동의",
     data.marketingConsentAt || "",
+    data.orderNumber || "",     // 주문번호 (손님 화면에 뜨는 6자리 번호, 나중에 주문조회용)
   ]);
 
   formatOrderSheet(sheet); // 주문 들어올 때마다 열 너비를 새 내용에 맞게 다시 조정
@@ -147,7 +148,7 @@ function formatOrderSheet(sheet) {
   sheet = sheet || SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
   if (!sheet) return;
 
-  var COLS = 17;
+  var COLS = 18;
   sheet.getRange(1, 1, 1, COLS)
     .setFontWeight("bold")
     .setBackground("#4B5D34")
@@ -160,7 +161,7 @@ function formatOrderSheet(sheet) {
   // 싶으면 시트에서 열 전체 선택 → 우클릭 → "열 크기 조정" → "데이터에 맞추기"(이건 정상 작동함).
   var widths = {
     1: 100, 2: 100, 3: 260, 4: 55, 5: 110, 6: 110, 7: 220, 8: 140,
-    9: 80, 10: 110, 11: 180, 12: 100, 13: 140, 14: 100, 15: 90, 16: 160, 17: 90,
+    9: 80, 10: 110, 11: 180, 12: 100, 13: 140, 14: 100, 15: 90, 16: 160, 17: 90, 18: 90,
   };
   Object.keys(widths).forEach(function (col) {
     sheet.setColumnWidth(Number(col), widths[col]);
@@ -194,7 +195,7 @@ function resetOrderSheet() {
   sheet.appendRow([
     "구매자명", "수취인명", "옵션정보", "수량", "연락처1", "연락처2",
     "배송주소", "상세주소", "우편번호", "송하인번호", "배송메모", "발송예정일",
-    "접수시각", "합계금액", "광고수신동의", "동의시각", "입금확인"
+    "접수시각", "합계금액", "광고수신동의", "동의시각", "입금확인", "주문번호"
   ]);
   formatOrderSheet(sheet);
 }
