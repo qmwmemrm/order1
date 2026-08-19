@@ -206,10 +206,13 @@ function formatDateVal_(v) {
 // 연락처1(5)/연락처2(6)/우편번호(9)/송하인번호(10)/주문번호(18): 숫자로만 이루어진 문자열이
 // 그대로 appendRow되면 시트가 "숫자"로 자동 인식해서 앞자리 0을 없애버림(01012341234 → 1012341234).
 // 열 서식을 미리 "일반 텍스트(@)"로 걸어두면 그 뒤로 들어오는 값은 숫자 변환 없이 문자열 그대로 저장됨.
-// 미래에 추가될 행까지 미리 걸어둬야 하므로 getMaxRows()로 열 전체에 적용.
+// getMaxRows()(보통 1000행)로 전체에 걸면 doPost마다 5000칸씩 서식을 다시 씌우느라 느려지므로
+// (formatOrderSheet에서 getMaxRows() 대신 getLastRow()를 쓰게 고쳤던 것과 같은 이유),
+// 현재 마지막 행 기준으로 다음 주문 여유분(50행)만 앞서서 걸어둠 - 매번 실행돼도 가벼움.
 function ensureTextColumns(sheet) {
+  var lastRow = Math.max(sheet.getLastRow(), 1);
   [5, 6, 9, 10, 18].forEach(function (col) {
-    sheet.getRange(1, col, sheet.getMaxRows(), 1).setNumberFormat("@");
+    sheet.getRange(1, col, lastRow + 50, 1).setNumberFormat("@");
   });
 }
 
