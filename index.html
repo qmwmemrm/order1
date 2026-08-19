@@ -654,7 +654,7 @@ function updateConsentUI(){
 // 페이지를 열자마자, 이 기기에 기억된 정보가 있으면 성함/연락처/주소까지 바로 채워둠
 // (본인이 다시 주문할 때 주소 검색을 또 안 하게 하려고). "다른 분께 선물하기"를 누르면
 // 이 정보는 구매자 칸으로 옮겨가고 받는 분 칸은 새로 입력하게 비워짐.
-(function applyStoredProfileOnLoad(){
+function applyStoredProfile(){
   const profile = loadStoredProfile();
   if (!profile || !profile.name) return;
   document.getElementById('name').value = profile.name;
@@ -663,7 +663,8 @@ function updateConsentUI(){
     document.getElementById('address').value = profile.address;
     zipcode = profile.zipcode || '';
   }
-})();
+}
+applyStoredProfile();
 updateConsentUI(); // 페이지 열자마자 한 번
 
 function openPostcode(){
@@ -1362,6 +1363,8 @@ function resetOrder(){
   setSameParty(true);
   document.getElementById('orderBar').style.display = 'flex';
   document.getElementById('reviewBar').style.display = 'none';
+  applyStoredProfile(); // 이어서 또 주문할 때도 저장된 내 정보로 다시 채워줌
+  updateConsentUI();
   showView('orderView');
   render();
 }
