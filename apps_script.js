@@ -50,7 +50,7 @@ function doPost(e) {
     data.orderNumber || "",     // 주문번호 (손님 화면에 뜨는 6자리 번호, 나중에 주문조회용)
   ]);
 
-  formatOrderSheet(sheet); // 주문 들어올 때마다 열 너비를 새 내용에 맞게 다시 조정
+  formatNewOrderRow(sheet, sheet.getLastRow()); // 방금 추가된 행 1개만 서식 (전체 재적용은 느려서 안 함)
 
   return ContentService
     .createTextOutput(JSON.stringify({ result: "success" }))
@@ -200,8 +200,22 @@ function formatDateVal_(v) {
   return String(v || "");
 }
 
-// 시트를 보기 편하게 서식 적용 (헤더 색칠+고정, 열 너비, 줄바꿈, 금액/날짜 서식, 줄무늬 배경).
-// 주문이 들어올 때마다(doPost) 자동으로 다시 적용됨. 지금 당장 기존 데이터에 적용하려면:
+// 새로 추가된 주문 행 "1개"에만 필요한 서식(줄바꿈/금액·날짜 서식/체크박스)을 입힘.
+// 예전엔 주문이 들어올 때마다 formatOrderSheet()로 전체 행 범위(줄무늬 배경, 열너비 18개
+// 재설정 포함)를 통째로 다시 서식 입혔는데, 이게 구글시트 API 호출을 데이터 전체 크기만큼
+// 반복해서 주문이 쌓일수록 "접수하는 중..."이 점점 느려지는 원인이었음(시트에 값 자체는
+// appendRow로 바로 반영되지만, doPost 응답이 이 전체 재서식이 끝나야 돌아가서 화면이 안 넘어감).
+// 새 행 1개만 처리하면 주문이 몇 건이 쌓여도 매번 빠름.
+function formatNewOrderRow(sheet, row) {
+  sheet.getRange(row, 3).setWrap(true); // 옵션정보 - 길어질 수 있어서 줄바꿈
+  sheet.getRange(row, 13).setNumberFormat("yyyy-mm-dd hh:mm"); // 접수시각
+  sheet.getRange(row, 14).setNumberFormat('#,##0"원"'); // 합계금액
+  sheet.getRange(row, 17).insertCheckboxes(); // 입금확인
+}
+
+// 시트 전체를 보기 편하게 서식 적용 (헤더 색칠+고정, 열 너비, 줄무늬 배경 등).
+// 이제 주문이 들어올 때 자동으로는 안 돌고(느려서 formatNewOrderRow로 대체함),
+// 줄무늬 배경이나 열 너비가 틀어져 보일 때 가끔 수동으로만 돌리면 됨:
 // Apps Script 편집기 상단에서 함수 선택 드롭다운을 "formatOrderSheet"로 바꾸고 ▶ 실행 버튼 한 번 누르면 됨.
 // 연락처1(5)/연락처2(6)/우편번호(9)/송하인번호(10)/주문번호(18): 숫자로만 이루어진 문자열이
 // 그대로 appendRow되면 시트가 "숫자"로 자동 인식해서 앞자리 0을 없애버림(01012341234 → 1012341234).
