@@ -77,13 +77,10 @@ function formatOrderSheet(sheet) {
   sheet.autoResizeColumns(1, COLS); // 나머지 열은 실제 내용 길이에 맞게 자동 조정
 
   var lastRow = Math.max(sheet.getMaxRows(), 2);
-  // 옵션정보(3) / 배송주소(7) / 배송메모(11): 내용이 길어질 수 있어서
-  // 자동맞춤 대신 적당한 너비로 고정하고 줄바꿈으로 처리
-  var wrapWidths = { 3: 260, 7: 220, 11: 180 };
-  Object.keys(wrapWidths).forEach(function (col) {
-    sheet.setColumnWidth(Number(col), wrapWidths[col]);
-    sheet.getRange(2, Number(col), lastRow - 1, 1).setWrap(true);
-  });
+  // 옵션정보(3): 상품 여러 개 담기면 내용이 매우 길어질 수 있어서
+  // 자동맞춤 대신 적당한 너비로 고정하고 줄바꿈으로 처리. 나머지 열은 위에서 자동맞춤됨.
+  sheet.setColumnWidth(3, 260);
+  sheet.getRange(2, 3, lastRow - 1, 1).setWrap(true);
   sheet.getRange(2, 14, lastRow - 1, 1).setNumberFormat('#,##0"원"'); // 합계금액
   sheet.getRange(2, 13, lastRow - 1, 1).setNumberFormat("yyyy-mm-dd hh:mm"); // 접수시각
 
