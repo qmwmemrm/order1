@@ -227,6 +227,7 @@
   }
   .consent-row input[type="checkbox"]{width:20px; height:20px; margin-top:2px; flex:none; accent-color:var(--mugwort-deep);}
   .consent-row label{display:block; cursor:pointer;}
+  .consent-row.hide{display:none;}
   .consent-title{display:block; font-size:var(--fs-label); font-weight:700; color:var(--ink);}
   .consent-sub{display:block; font-size:12px; color:var(--ink-soft); margin-top:3px; line-height:1.5;}
   body.large-text .consent-sub{font-size:14px;}
@@ -417,14 +418,18 @@
           <div class="ship-date-note">신선식품은 배송출발일자 익일에 도착하며, 배송일과 익일이 휴일인 경우에는 배송이 되지 않습니다.</div>
         </div>
       </div>
-      <div class="consent-row">
+      <div class="consent-row" id="privacyConsentRow">
         <input type="checkbox" id="privacyConsent">
         <label for="privacyConsent">
           <span class="consent-title">개인정보 수집·이용에 동의합니다 (필수)</span>
           <span class="consent-sub">수집 항목: 성함, 연락처, 배송주소 · 수집 목적: 주문 접수 및 상품 배송 · 보유 기간: 주문 처리 완료 후 1년(관련 법령상 보관 의무가 있는 경우 그 기간까지). 배송을 위해 택배사에만 제공되며, 그 외에는 제공하지 않습니다. 동의하지 않으시면 주문 접수가 어려워요.</span>
         </label>
       </div>
-      <div class="consent-row">
+      <div class="consent-row hide" id="privacyConsentNote">
+        <span class="consent-title">✅ 이전에 같은 정보로 동의하신 내용을 그대로 사용해요</span>
+        <span class="consent-sub">성함·연락처·주소를 바꾸시면 다시 동의를 여쭤봐요.</span>
+      </div>
+      <div class="consent-row" id="marketingConsentRow">
         <input type="checkbox" id="marketingConsent">
         <label for="marketingConsent">
           <span class="consent-title">광고성 정보(문자) 수신에 동의합니다</span>
@@ -584,6 +589,63 @@ let sameParty = true;
 let zipcode = '';
 let editOrderNumber = null; // null이면 새 주문, 값이 있으면 그 주문번호 행을 덮어쓰는 "수정" 모드
 
+// 이 기기(브라우저)에 마지막으로 주문한 정보를 기억해뒀다가, 다음에 같은 정보로
+// 또 주문할 때 매번 동의를 다시 안 물어보게 하기 위한 로컬 저장. 서버로는 안 나가고
+// 이 브라우저 안에만 남음 - 시크릿 모드나 캐시 삭제 시엔 사라짐.
+const PROFILE_KEY = 'sgsm_profile_v1';
+
+function loadStoredProfile(){
+  try {
+    const raw = localStorage.getItem(PROFILE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function saveStoredProfile(profile){
+  try {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+  } catch (err) {
+    // 시크릿 모드 등에서 저장이 막혀도 주문 자체엔 지장 없게 조용히 무시
+  }
+}
+
+// 개인정보 동의는 "지금 입력한 정보(성함/연락처/주소)가 예전에 동의했던 그 정보와
+// 완전히 같을 때만" 다시 안 물어봄 - 주소가 바뀌면 새로운 개인정보 수집이라 다시 동의 필요.
+function privacyAlreadyConsented(){
+  const profile = loadStoredProfile();
+  if (!profile || !profile.privacyConsented) return false;
+  const name = document.getElementById('name').value.trim();
+  const phone = document.getElementById('phone').value.trim();
+  const address = document.getElementById('address').value.trim();
+  return profile.name === name && profile.phone === phone && profile.address === address;
+}
+
+// 광고수신동의는 배송 주소가 아니라 "이 사람(연락처)이 광고를 받을지"에 대한 선택이라,
+// 연락처만 같으면(주소가 달라도) 예전 선택을 그대로 씀 - 이미 한 번 고른 사람한테
+// 매번 다시 묻지 않음(동의했든 미동의했든 마찬가지).
+function rememberedMarketingChoice(){
+  const profile = loadStoredProfile();
+  const phone = document.getElementById('phone').value.trim();
+  if (!profile || !phone || profile.phone !== phone) return null;
+  return (profile.marketingChoice === '동의' || profile.marketingChoice === '미동의') ? profile.marketingChoice : null;
+}
+
+function updateConsentUI(){
+  const skipPrivacy = privacyAlreadyConsented();
+  document.getElementById('privacyConsentRow').classList.toggle('hide', skipPrivacy);
+  document.getElementById('privacyConsentNote').classList.toggle('hide', !skipPrivacy);
+
+  const remembered = rememberedMarketingChoice();
+  document.getElementById('marketingConsentRow').classList.toggle('hide', !!remembered);
+}
+
+['name', 'phone', 'address'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updateConsentUI);
+});
+updateConsentUI(); // 페이지 열자마자 한 번 - 다음 우편번호 검색 등으로 주소가 이미 채워져 있을 수 있어서
+
 function openPostcode(){
   if (typeof daum === 'undefined' || !daum.Postcode) {
     alert('주소 검색 기능을 불러오지 못했어요.\n\n' +
@@ -597,6 +659,7 @@ function openPostcode(){
       document.getElementById('address').value = data.roadAddress || data.address;
       zipcode = data.zonecode || '';
       document.getElementById('addressDetail').focus();
+      updateConsentUI();
     }
   }).open();
 }
@@ -991,6 +1054,7 @@ async function startEditOrder(orderNumber){
     zipcode = data.zipcode || '';
     document.getElementById('note').value = data.note || '';
     setSameParty(true); // 수정은 항상 "받으시는 분 = 주문자" 기준으로 단순화
+    updateConsentUI();
 
     if (data.shipDate) {
       document.getElementById('customDateToggle').checked = true;
@@ -1053,7 +1117,7 @@ function goToReview(){
     alert('배송 주소를 검색해서 선택해주세요.');
     return;
   }
-  if (!document.getElementById('privacyConsent').checked) {
+  if (!privacyAlreadyConsented() && !document.getElementById('privacyConsent').checked) {
     alert('개인정보 수집·이용에 동의해주셔야 주문이 가능해요.');
     return;
   }
@@ -1111,7 +1175,10 @@ function backToOrder(){
 }
 
 async function submitOrder(){
-  const marketingConsent = document.getElementById('marketingConsent').checked;
+  // 이전에 이미 광고수신 동의/미동의를 정한 적 있으면(같은 연락처) 그 선택을 그대로 쓰고,
+  // 처음이면 지금 체크박스 상태를 씀.
+  const remembered = rememberedMarketingChoice();
+  const marketingConsent = remembered ? (remembered === '동의') : document.getElementById('marketingConsent').checked;
   const total = calcTotal();
   const nameVal = document.getElementById('name').value.trim();
   const phoneVal = document.getElementById('phone').value.trim();
@@ -1180,6 +1247,16 @@ async function submitOrder(){
     finalBtn.disabled = false;
     finalBtn.textContent = '네, 이대로 주문할게요';
     editOrderNumber = null; // 접수 끝났으니 다음 주문은 다시 "새 주문"으로
+
+    // 이번에 실제로 동의 절차를 거쳤으니(직접 체크했든, 예전 동의를 재사용했든) 이 기기에
+    // 다음 주문을 위해 정보를 기억해둠 - 다음에 같은 정보면 동의를 다시 안 물어봄.
+    saveStoredProfile({
+      name: nameVal,
+      phone: phoneVal,
+      address: addressVal,
+      privacyConsented: true,
+      marketingChoice: marketingConsent ? '동의' : '미동의',
+    });
   };
 
   if (!GOOGLE_SCRIPT_URL) {
