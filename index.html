@@ -972,9 +972,15 @@ async function submitOrder(){
 
   // 이미 "기존 주문 수정" 모드면 다시 물어볼 필요 없음. 새 주문일 때만, 최근 1시간 안에
   // 같은 이름+연락처+주소로 접수된 주문이 있는지 확인해서 실수로 중복 주문하는 걸 막아줌.
+  // Apps Script 응답이 6~20초 걸릴 때가 있어서(구글 쪽 리다이렉트 지연), 이 확인 때문에
+  // 접수 자체가 느려지면 안 됨 - 3초 안에 응답 없으면 그냥 확인 없이 새 주문으로 진행함
+  // (중복확인은 편의 기능이지 필수 기능이 아니라서 "안전하게 실패"해도 됨).
   if (!editOrderNumber && GOOGLE_SCRIPT_URL) {
     try {
-      const checkRes = await fetch(`${GOOGLE_SCRIPT_URL}?action=checkRecent&name=${encodeURIComponent(nameVal)}&phone=${encodeURIComponent(phoneVal)}&address=${encodeURIComponent(addressVal)}`);
+      const checkRes = await Promise.race([
+        fetch(`${GOOGLE_SCRIPT_URL}?action=checkRecent&name=${encodeURIComponent(nameVal)}&phone=${encodeURIComponent(phoneVal)}&address=${encodeURIComponent(addressVal)}`),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('slow')), 3000)),
+      ]);
       const checkData = await checkRes.json();
       if (checkData.found) {
         const wantsEdit = confirm(
@@ -983,7 +989,7 @@ async function submitOrder(){
         if (wantsEdit) editOrderNumber = checkData.orderNumber;
       }
     } catch (err) {
-      // 중복확인은 편의 기능이라 실패해도 주문 자체는 그대로 진행함
+      // 3초 넘게 걸렸거나 네트워크 문제 - 중복확인은 건너뛰고 그냥 새 주문으로 진행함
     }
   }
 
