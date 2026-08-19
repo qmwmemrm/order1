@@ -6,6 +6,8 @@
 // 컬럼 순서는 파이썬 쪽 image_order.py의 "로젠택배양식" 시트랑 똑같이 맞춰뒀음:
 // 구매자명, 수취인명, 옵션정보, 수량, 연락처1, 연락처2, 배송주소, 상세주소,
 // 우편번호, 송하인번호, 배송메모, 발송예정일  (+ 접수시각/합계금액/광고동의는 참고용으로 뒤에 추가)
+// "입금확인"(맨 마지막 칸)은 손님이 채우는 게 아니라 사장님이 입금 확인 후 직접 체크하는 칸.
+// pyorder 쪽에서 이 칸이 체크된 행만 가져가게 되어있음 - 계좌이체라 자동 확인이 안 돼서 그럼.
 
 function doPost(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
@@ -14,7 +16,7 @@ function doPost(e) {
     sheet.appendRow([
       "구매자명", "수취인명", "옵션정보", "수량", "연락처1", "연락처2",
       "배송주소", "상세주소", "우편번호", "송하인번호", "배송메모", "발송예정일",
-      "접수시각", "합계금액", "광고수신동의", "동의시각"
+      "접수시각", "합계금액", "광고수신동의", "동의시각", "입금확인"
     ]);
   }
 
@@ -66,7 +68,7 @@ function formatOrderSheet(sheet) {
   sheet = sheet || SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
   if (!sheet) return;
 
-  var COLS = 16;
+  var COLS = 17;
   sheet.getRange(1, 1, 1, COLS)
     .setFontWeight("bold")
     .setBackground("#4B5D34")
@@ -79,7 +81,7 @@ function formatOrderSheet(sheet) {
   // 싶으면 시트에서 열 전체 선택 → 우클릭 → "열 크기 조정" → "데이터에 맞추기"(이건 정상 작동함).
   var widths = {
     1: 100, 2: 100, 3: 260, 4: 55, 5: 110, 6: 110, 7: 220, 8: 140,
-    9: 80, 10: 110, 11: 180, 12: 100, 13: 140, 14: 100, 15: 90, 16: 160,
+    9: 80, 10: 110, 11: 180, 12: 100, 13: 140, 14: 100, 15: 90, 16: 160, 17: 90,
   };
   Object.keys(widths).forEach(function (col) {
     sheet.setColumnWidth(Number(col), widths[col]);
@@ -90,6 +92,7 @@ function formatOrderSheet(sheet) {
   sheet.getRange(2, 3, lastRow - 1, 1).setWrap(true);
   sheet.getRange(2, 14, lastRow - 1, 1).setNumberFormat('#,##0"원"'); // 합계금액
   sheet.getRange(2, 13, lastRow - 1, 1).setNumberFormat("yyyy-mm-dd hh:mm"); // 접수시각
+  sheet.getRange(2, 17, lastRow - 1, 1).insertCheckboxes(); // 입금확인 - 사장님이 입금 확인 후 직접 체크
 
   sheet.getBandings().forEach(function (b) { b.remove(); });
   sheet.getRange(1, 1, lastRow, COLS)
@@ -109,7 +112,7 @@ function resetOrderSheet() {
   sheet.appendRow([
     "구매자명", "수취인명", "옵션정보", "수량", "연락처1", "연락처2",
     "배송주소", "상세주소", "우편번호", "송하인번호", "배송메모", "발송예정일",
-    "접수시각", "합계금액", "광고수신동의", "동의시각"
+    "접수시각", "합계금액", "광고수신동의", "동의시각", "입금확인"
   ]);
   formatOrderSheet(sheet);
 }
