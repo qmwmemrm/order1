@@ -527,6 +527,7 @@ const PRODUCTS = [
 let selections = {};
 let sameParty = true;
 let zipcode = '';
+let editOrderNumber = null; // null이면 새 주문, 값이 있으면 그 주문번호 행을 덮어쓰는 "수정" 모드
 
 function openPostcode(){
   if (typeof daum === 'undefined' || !daum.Postcode) {
@@ -811,9 +812,60 @@ async function doOrderLookup(){
         <div class="review-row"><span class="k">배송지역</span><span class="v">${data.addressMasked}</span></div>
         <div class="review-row"><span class="k">입금 상태</span><span class="v">${data.paid ? '입금 확인됨 ✅' : '입금 확인 중'}</span></div>
       </div>
+      ${data.paid
+        ? `<div class="review-notice" style="margin-top:12px;">입금 확인된 주문은 여기서 수정할 수 없어요. 변경이 필요하시면 매장으로 직접 연락해주세요.</div>`
+        : `<button type="button" class="submit-btn" style="width:100%; margin-top:12px;" onclick="startEditOrder('${orderNumber}')">✏️ 이 주문 수정하기</button>`
+      }
     `;
   } catch (err) {
     resultBox.innerHTML = `<div class="review-notice">조회 중 문제가 생겼어요. 다시 시도해주세요.</div>`;
+  }
+}
+
+// 손님이 실수로 잘못 주문했을 때, 주문번호+연락처를 확인해서 맞으면 기존 정보를 폼에
+// 채워주고 "수정 모드"로 전환함. 상품은 원문 텍스트를 다시 구조화하기 어려워서 새로
+// 골라야 함 - 연락처/주소/메모 등만 자동으로 채워줌.
+async function startEditOrder(orderNumber){
+  const phone = prompt('본인 확인을 위해, 주문하실 때 입력하신 연락처를 입력해주세요 (예: 01012345678)');
+  if (!phone || !phone.trim()) return;
+
+  const resultBox = document.getElementById('lookupResult');
+  resultBox.insertAdjacentHTML('beforeend', `<div class="review-notice" id="editCheckMsg">확인 중...</div>`);
+
+  try {
+    const res = await fetch(`${GOOGLE_SCRIPT_URL}?action=editLookup&orderNumber=${encodeURIComponent(orderNumber)}&phone=${encodeURIComponent(phone.trim())}`);
+    const data = await res.json();
+    document.getElementById('editCheckMsg')?.remove();
+
+    if (!data.found) {
+      alert(data.message || '연락처가 일치하지 않아요.');
+      return;
+    }
+
+    document.getElementById('name').value = data.name || '';
+    document.getElementById('phone').value = data.phone || '';
+    document.getElementById('address').value = data.address || '';
+    document.getElementById('addressDetail').value = data.addressDetail || '';
+    zipcode = data.zipcode || '';
+    document.getElementById('note').value = data.note || '';
+    setSameParty(true); // 수정은 항상 "받으시는 분 = 주문자" 기준으로 단순화
+
+    if (data.shipDate) {
+      document.getElementById('customDateToggle').checked = true;
+      document.getElementById('shipDateBox').classList.remove('hide');
+      shipDateInput.value = data.shipDate;
+    }
+
+    selections = {}; // 상품은 새로 골라야 함(기존 옵션정보 텍스트를 되돌릴 수 없어서)
+    editOrderNumber = orderNumber;
+    render();
+
+    alert('기존 주문 정보를 불러왔어요. 상품을 다시 선택하시고 "다음"을 눌러 수정 내용을 확인해주세요.');
+    showView('orderView');
+    window.scrollTo(0, 0);
+  } catch (err) {
+    document.getElementById('editCheckMsg')?.remove();
+    alert('확인 중 문제가 생겼어요. 다시 시도해주세요.');
   }
 }
 
@@ -885,18 +937,42 @@ function backToOrder(){
 async function submitOrder(){
   const marketingConsent = document.getElementById('marketingConsent').checked;
   const total = calcTotal();
-  // 6자리 랜덤 주문번호 - 서버 응답을 못 읽는 구조(no-cors)라 여기서 미리 만들어서
-  // 접수 데이터에 같이 실어보내고, 화면에도 그대로 보여줌 (구글시트에도 같은 값 저장됨)
-  const orderNumber = String(Math.floor(100000 + Math.random() * 900000));
+  const nameVal = document.getElementById('name').value.trim();
+  const phoneVal = document.getElementById('phone').value.trim();
+  const addressVal = document.getElementById('address').value.trim();
+
+  // 이미 "기존 주문 수정" 모드면 다시 물어볼 필요 없음. 새 주문일 때만, 최근 1시간 안에
+  // 같은 이름+연락처+주소로 접수된 주문이 있는지 확인해서 실수로 중복 주문하는 걸 막아줌.
+  if (!editOrderNumber && GOOGLE_SCRIPT_URL) {
+    try {
+      const checkRes = await fetch(`${GOOGLE_SCRIPT_URL}?action=checkRecent&name=${encodeURIComponent(nameVal)}&phone=${encodeURIComponent(phoneVal)}&address=${encodeURIComponent(addressVal)}`);
+      const checkData = await checkRes.json();
+      if (checkData.found) {
+        const wantsEdit = confirm(
+          `최근 1시간 이내에 같은 정보로 "${checkData.productText}" 주문하신 기록이 있어요 (주문번호 ${checkData.orderNumber}, ${checkData.receivedAt}).\n\n` +
+          `혹시 실수로 다시 주문하신 거라면 "확인"을 눌러 그 주문을 지금 내용으로 수정하고, 정말 별도로 새 주문을 넣으시는 거라면 "취소"를 눌러주세요.`
+        );
+        if (wantsEdit) editOrderNumber = checkData.orderNumber;
+      }
+    } catch (err) {
+      // 중복확인은 편의 기능이라 실패해도 주문 자체는 그대로 진행함
+    }
+  }
+
+  // 수정 모드면 기존 주문번호를 그대로 쓰고, 새 주문이면 6자리 랜덤 주문번호를 새로 만듦 -
+  // 서버 응답을 못 읽는 구조(no-cors)라 여기서 미리 만들어서 접수 데이터에 같이 실어보내고,
+  // 화면에도 그대로 보여줌 (구글시트에도 같은 값 저장됨)
+  const orderNumber = editOrderNumber || String(Math.floor(100000 + Math.random() * 900000));
 
   const orderData = {
     orderNumber: orderNumber,
-    name: document.getElementById('name').value.trim(),
-    phone: document.getElementById('phone').value.trim(),
+    updateOrderNumber: editOrderNumber || undefined,
+    name: nameVal,
+    phone: phoneVal,
     sameParty: sameParty,
     buyerName: sameParty ? '' : document.getElementById('buyerName').value.trim(),
     buyerPhone: sameParty ? '' : document.getElementById('buyerPhone').value.trim(),
-    address: document.getElementById('address').value.trim(),
+    address: addressVal,
     addressDetail: document.getElementById('addressDetail').value.trim(),
     zipcode: zipcode,
     note: document.getElementById('note').value.trim(),
@@ -921,6 +997,7 @@ async function submitOrder(){
     showView('confirmView');
     finalBtn.disabled = false;
     finalBtn.textContent = '네, 이대로 주문할게요';
+    editOrderNumber = null; // 접수 끝났으니 다음 주문은 다시 "새 주문"으로
   };
 
   if (!GOOGLE_SCRIPT_URL) {
@@ -960,6 +1037,7 @@ async function submitOrder(){
 
 function resetOrder(){
   selections = {};
+  editOrderNumber = null;
   document.getElementById('name').value = '';
   document.getElementById('phone').value = '';
   document.getElementById('buyerName').value = '';
