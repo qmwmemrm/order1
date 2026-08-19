@@ -14,6 +14,10 @@
 // 열 서식을 미리 텍스트로 걸어두는 방식은 시도해봤지만 실제로 효과가 없었음(재배포 후에도
 // 재현됨) - 대신 값 앞에 작은따옴표(')를 붙여서 쓰면 시트가 그 값을 문자로 강제 인식하고
 // 작은따옴표 자체는 저장되지 않음. Apps Script로 값을 쓸 때 텍스트를 강제하는 표준적인 방법.
+//
+// 손님이 입력하는 모든 텍스트 칸(이름/주소/메모 등)에도 똑같이 적용함 - 이유는 하나 더 있는데,
+// 값이 "="나 "+"로 시작하면 나중에 사장님이 시트에서 그 셀을 열 때 수식으로 실행될 수 있음
+// (스프레드시트 수식 인젝션). 작은따옴표를 앞에 붙이면 이 문제도 같이 막아줌.
 function forceText_(v) {
   v = (v === null || v === undefined) ? "" : String(v);
   return v === "" ? "" : ("'" + v);
@@ -38,17 +42,17 @@ function doPost(e) {
   var senderPhone = sameParty ? (data.phone || "") : (data.buyerPhone || "");
 
   sheet.appendRow([
-    buyerName,                 // 구매자명
-    data.name || "",           // 수취인명
-    data.productText || "",    // 옵션정보
+    forceText_(buyerName),        // 구매자명
+    forceText_(data.name),        // 수취인명
+    forceText_(data.productText), // 옵션정보
     1,                         // 수량 (박스 개수 - 상품 개수는 옵션정보 텍스트 안에 이미 포함됨)
     forceText_(data.phone),    // 연락처1 (수취인 연락처) - 앞자리 0 보존
     "",                        // 연락처2 (이 폼에서는 안 받음)
-    data.address || "",        // 배송주소 (다음 우편번호 서비스로 검색된 정확한 주소)
-    data.addressDetail || "",  // 상세주소 (동/호수 등, 고객이 직접 입력)
+    forceText_(data.address),       // 배송주소 (다음 우편번호 서비스로 검색된 정확한 주소)
+    forceText_(data.addressDetail), // 상세주소 (동/호수 등, 고객이 직접 입력)
     forceText_(data.zipcode),  // 우편번호 (다음 우편번호 서비스에서 자동으로 받아옴) - 앞자리 0 보존
     forceText_(senderPhone),   // 송하인번호 (보내는사람 자기 번호) - 앞자리 0 보존
-    data.note || "",           // 배송메모
+    forceText_(data.note),     // 배송메모
     data.shipDate || "",       // 발송예정일 (고객이 직접 지정 안 했으면 빈칸 - 나중에 직접 정함)
     new Date(),                 // 접수시각
     data.totalAmount || 0,      // 합계금액
