@@ -19,6 +19,7 @@ function doPost(e) {
       "접수시각", "합계금액", "광고수신동의", "동의시각", "입금확인", "주문번호"
     ]);
   }
+  ensureTextColumns(sheet); // appendRow 쓰기 전에 미리 텍스트 서식 걸어둬야 010... 앞자리 0이 안 날아감
 
   var data = JSON.parse(e.postData.contents);
   var sameParty = data.sameParty !== false;
@@ -202,9 +203,20 @@ function formatDateVal_(v) {
 // 시트를 보기 편하게 서식 적용 (헤더 색칠+고정, 열 너비, 줄바꿈, 금액/날짜 서식, 줄무늬 배경).
 // 주문이 들어올 때마다(doPost) 자동으로 다시 적용됨. 지금 당장 기존 데이터에 적용하려면:
 // Apps Script 편집기 상단에서 함수 선택 드롭다운을 "formatOrderSheet"로 바꾸고 ▶ 실행 버튼 한 번 누르면 됨.
+// 연락처1(5)/연락처2(6)/우편번호(9)/송하인번호(10)/주문번호(18): 숫자로만 이루어진 문자열이
+// 그대로 appendRow되면 시트가 "숫자"로 자동 인식해서 앞자리 0을 없애버림(01012341234 → 1012341234).
+// 열 서식을 미리 "일반 텍스트(@)"로 걸어두면 그 뒤로 들어오는 값은 숫자 변환 없이 문자열 그대로 저장됨.
+// 미래에 추가될 행까지 미리 걸어둬야 하므로 getMaxRows()로 열 전체에 적용.
+function ensureTextColumns(sheet) {
+  [5, 6, 9, 10, 18].forEach(function (col) {
+    sheet.getRange(1, col, sheet.getMaxRows(), 1).setNumberFormat("@");
+  });
+}
+
 function formatOrderSheet(sheet) {
   sheet = sheet || SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
   if (!sheet) return;
+  ensureTextColumns(sheet);
 
   var COLS = 18;
   sheet.getRange(1, 1, 1, COLS)
