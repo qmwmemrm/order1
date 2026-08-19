@@ -137,15 +137,18 @@ function confirmPaymentByAmount(p) {
     var row = data[i];
     var rowAmount = row[13];   // N열: 합계금액
     var rowConfirmed = row[16]; // Q열: 입금확인
-    var rowReceiver = String(row[1] || ""); // B열: 수취인명
+    // 실제로 계좌에서 돈을 보내는 사람은 항상 "구매자명"(A열)임. "다른 분이 받으신다"를
+    // 체크한 주문은 수취인(B열)과 구매자가 다른 사람이라, 입금자명 대조는 구매자명으로
+    // 해야 함(같은 분이면 doPost에서 구매자명=수취인명으로 이미 같게 저장되니 문제 없음).
+    var rowBuyer = String(row[0] || ""); // A열: 구매자명
     if (rowConfirmed === true) continue;
     if (Number(rowAmount) !== amount) continue;
-    matches.push({ sheetRow: i + 2, receiver: rowReceiver });
+    matches.push({ sheetRow: i + 2, buyer: rowBuyer });
   }
 
   if (name && matches.length > 1) {
     var nameMatches = matches.filter(function (m) {
-      return m.receiver.indexOf(name) !== -1 || name.indexOf(m.receiver) !== -1;
+      return m.buyer.indexOf(name) !== -1 || name.indexOf(m.buyer) !== -1;
     });
     if (nameMatches.length >= 1) matches = nameMatches;
   }
@@ -157,7 +160,7 @@ function confirmPaymentByAmount(p) {
   } else {
     sheet.getRange(matches[0].sheetRow, 17).setValue(true);
     result.ok = true;
-    result.message = "입금확인 처리됨: " + matches[0].receiver + " / " + amount + "원";
+    result.message = "입금확인 처리됨: " + matches[0].buyer + " / " + amount + "원";
   }
   return jsonOut(result);
 }
