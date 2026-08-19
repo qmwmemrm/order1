@@ -611,40 +611,60 @@ function saveStoredProfile(profile){
   }
 }
 
-// 개인정보 동의는 "지금 입력한 정보(성함/연락처/주소)가 예전에 동의했던 그 정보와
-// 완전히 같을 때만" 다시 안 물어봄 - 주소가 바뀌면 새로운 개인정보 수집이라 다시 동의 필요.
-function privacyAlreadyConsented(){
-  const profile = loadStoredProfile();
-  if (!profile || !profile.privacyConsented) return false;
-  const name = document.getElementById('name').value.trim();
-  const phone = document.getElementById('phone').value.trim();
-  const address = document.getElementById('address').value.trim();
-  return profile.name === name && profile.phone === phone && profile.address === address;
+// "구매자"는 실제로 돈을 보내고 주문을 넣는 사람 - 같은 분이 받으시면 위 칸(성함/연락처)이
+// 곧 구매자고, 선물이면 "구매자 정보" 칸(buyerName/buyerPhone)이 구매자임. 동의를 다시
+// 물어볼지 말지는 항상 이 "구매자"가 예전에 동의한 적 있는 사람인지로 판단함 - 받는 분
+// 주소는 선물마다 바뀌는 게 당연해서 판단 기준으로 안 씀.
+function currentBuyerIdentity(){
+  if (sameParty) {
+    return {
+      name: document.getElementById('name').value.trim(),
+      phone: document.getElementById('phone').value.trim(),
+    };
+  }
+  return {
+    name: document.getElementById('buyerName').value.trim(),
+    phone: document.getElementById('buyerPhone').value.trim(),
+  };
 }
 
-// 광고수신동의는 배송 주소가 아니라 "이 사람(연락처)이 광고를 받을지"에 대한 선택이라,
-// 연락처만 같으면(주소가 달라도) 예전 선택을 그대로 씀 - 이미 한 번 고른 사람한테
-// 매번 다시 묻지 않음(동의했든 미동의했든 마찬가지).
-function rememberedMarketingChoice(){
+function buyerAlreadyKnown(){
   const profile = loadStoredProfile();
-  const phone = document.getElementById('phone').value.trim();
-  if (!profile || !phone || profile.phone !== phone) return null;
-  return (profile.marketingChoice === '동의' || profile.marketingChoice === '미동의') ? profile.marketingChoice : null;
+  if (!profile || !profile.privacyConsented) return false;
+  const buyer = currentBuyerIdentity();
+  if (!buyer.name || !buyer.phone) return false;
+  return profile.name === buyer.name && profile.phone === buyer.phone;
 }
 
 function updateConsentUI(){
-  const skipPrivacy = privacyAlreadyConsented();
-  document.getElementById('privacyConsentRow').classList.toggle('hide', skipPrivacy);
-  document.getElementById('privacyConsentNote').classList.toggle('hide', !skipPrivacy);
+  const knownBuyer = buyerAlreadyKnown();
+  document.getElementById('privacyConsentRow').classList.toggle('hide', knownBuyer);
+  document.getElementById('privacyConsentNote').classList.toggle('hide', !knownBuyer);
 
-  const remembered = rememberedMarketingChoice();
-  document.getElementById('marketingConsentRow').classList.toggle('hide', !!remembered);
+  // 광고수신동의: 이미 아는 구매자면(재구매든 선물이든) 다시 안 물어보고 예전 선택을 그대로
+  // 씀. 선물 주문은 구매자를 알아도 "받는 분" 번호로 광고문자를 보낼 수는 없으니 아예 숨김
+  // (제출 시 항상 미동의로 처리됨 - submitOrder 참고).
+  document.getElementById('marketingConsentRow').classList.toggle('hide', !sameParty || knownBuyer);
 }
 
-['name', 'phone', 'address'].forEach(id => {
+['name', 'phone', 'address', 'buyerName', 'buyerPhone'].forEach(id => {
   document.getElementById(id).addEventListener('input', updateConsentUI);
 });
-updateConsentUI(); // 페이지 열자마자 한 번 - 다음 우편번호 검색 등으로 주소가 이미 채워져 있을 수 있어서
+
+// 페이지를 열자마자, 이 기기에 기억된 정보가 있으면 성함/연락처/주소까지 바로 채워둠
+// (본인이 다시 주문할 때 주소 검색을 또 안 하게 하려고). "다른 분께 선물하기"를 누르면
+// 이 정보는 구매자 칸으로 옮겨가고 받는 분 칸은 새로 입력하게 비워짐.
+(function applyStoredProfileOnLoad(){
+  const profile = loadStoredProfile();
+  if (!profile || !profile.name) return;
+  document.getElementById('name').value = profile.name;
+  document.getElementById('phone').value = profile.phone;
+  if (profile.address) {
+    document.getElementById('address').value = profile.address;
+    zipcode = profile.zipcode || '';
+  }
+})();
+updateConsentUI(); // 페이지 열자마자 한 번
 
 function openPostcode(){
   if (typeof daum === 'undefined' || !daum.Postcode) {
@@ -752,7 +772,23 @@ function setSameParty(value){
   phoneLabel.textContent = value ? '연락처' : '받으시는 분 연락처';
 }
 sameYesBtn.addEventListener('click', () => setSameParty(true));
-sameNoBtn.addEventListener('click', () => setSameParty(false));
+sameNoBtn.addEventListener('click', () => {
+  // "다른 분이 받으신다" 누르면, 지금 채워져 있던(=내 정보였던) 성함/연락처를
+  // 구매자 칸으로 옮기고, 위 칸은 받는 분 정보를 새로 입력하도록 비움.
+  const curName = document.getElementById('name').value.trim();
+  const curPhone = document.getElementById('phone').value.trim();
+  if (curName && curPhone) {
+    document.getElementById('buyerName').value = curName;
+    document.getElementById('buyerPhone').value = curPhone;
+  }
+  document.getElementById('name').value = '';
+  document.getElementById('phone').value = '';
+  document.getElementById('address').value = '';
+  document.getElementById('addressDetail').value = '';
+  zipcode = '';
+  setSameParty(false);
+  updateConsentUI();
+});
 
 function itemName(p, sel){
   if (!p.sizes) return p.name;
@@ -1117,7 +1153,7 @@ function goToReview(){
     alert('배송 주소를 검색해서 선택해주세요.');
     return;
   }
-  if (!privacyAlreadyConsented() && !document.getElementById('privacyConsent').checked) {
+  if (!buyerAlreadyKnown() && !document.getElementById('privacyConsent').checked) {
     alert('개인정보 수집·이용에 동의해주셔야 주문이 가능해요.');
     return;
   }
@@ -1175,14 +1211,22 @@ function backToOrder(){
 }
 
 async function submitOrder(){
-  // 이전에 이미 광고수신 동의/미동의를 정한 적 있으면(같은 연락처) 그 선택을 그대로 쓰고,
-  // 처음이면 지금 체크박스 상태를 씀.
-  const remembered = rememberedMarketingChoice();
-  const marketingConsent = remembered ? (remembered === '동의') : document.getElementById('marketingConsent').checked;
   const total = calcTotal();
   const nameVal = document.getElementById('name').value.trim();
   const phoneVal = document.getElementById('phone').value.trim();
   const addressVal = document.getElementById('address').value.trim();
+  const addressDetailVal = document.getElementById('addressDetail').value.trim();
+  const buyerNameVal = sameParty ? nameVal : document.getElementById('buyerName').value.trim();
+  const buyerPhoneVal = sameParty ? phoneVal : document.getElementById('buyerPhone').value.trim();
+
+  // 광고수신동의: 선물 주문은 받는 분(제3자) 번호로 광고문자를 보낼 수 없으니 항상 미동의로
+  // 처리. 본인 주문이면 구매자가 예전에 정한 선택(동의/미동의)이 있으면 그걸 그대로 쓰고,
+  // 처음이면 지금 체크박스 상태를 씀.
+  const existingProfile = loadStoredProfile();
+  const knownBuyerForMarketing = existingProfile && existingProfile.phone === buyerPhoneVal ? existingProfile.marketingChoice : null;
+  const marketingConsent = !sameParty
+    ? false
+    : (knownBuyerForMarketing ? knownBuyerForMarketing === '동의' : document.getElementById('marketingConsent').checked);
 
   // 이미 "기존 주문 수정" 모드면 다시 물어볼 필요 없음. 새 주문일 때만, 최근 1시간 안에
   // 같은 이름+연락처+주소로 접수된 주문이 있는지 확인해서 실수로 중복 주문하는 걸 막아줌.
@@ -1249,13 +1293,19 @@ async function submitOrder(){
     editOrderNumber = null; // 접수 끝났으니 다음 주문은 다시 "새 주문"으로
 
     // 이번에 실제로 동의 절차를 거쳤으니(직접 체크했든, 예전 동의를 재사용했든) 이 기기에
-    // 다음 주문을 위해 정보를 기억해둠 - 다음에 같은 정보면 동의를 다시 안 물어봄.
+    // "구매자" 기준으로 정보를 기억해둠 - 다음에 같은 구매자면 동의를 다시 안 물어봄.
+    // 선물 주문이면 받는 분(제3자) 주소를 내 기본 주소인 것처럼 저장하면 안 되니, 구매자
+    // 본인 주소는 기존에 저장된 값을 그대로 유지함(있으면).
+    const sameBuyerAsBefore = existingProfile && existingProfile.phone === buyerPhoneVal;
     saveStoredProfile({
-      name: nameVal,
-      phone: phoneVal,
-      address: addressVal,
+      name: buyerNameVal,
+      phone: buyerPhoneVal,
+      address: sameParty ? addressVal : (sameBuyerAsBefore ? existingProfile.address : ''),
+      zipcode: sameParty ? zipcode : (sameBuyerAsBefore ? existingProfile.zipcode : ''),
       privacyConsented: true,
-      marketingChoice: marketingConsent ? '동의' : '미동의',
+      marketingChoice: sameParty
+        ? (marketingConsent ? '동의' : '미동의')
+        : ((sameBuyerAsBefore && existingProfile.marketingChoice) || '미동의'),
     });
   };
 
