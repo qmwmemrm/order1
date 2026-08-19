@@ -948,8 +948,7 @@ async function submitOrder(){
       const checkData = await checkRes.json();
       if (checkData.found) {
         const wantsEdit = confirm(
-          `최근 1시간 이내에 같은 정보로 "${checkData.productText}" 주문하신 기록이 있어요 (주문번호 ${checkData.orderNumber}, ${checkData.receivedAt}).\n\n` +
-          `혹시 실수로 다시 주문하신 거라면 "확인"을 눌러 그 주문을 지금 내용으로 수정하고, 정말 별도로 새 주문을 넣으시는 거라면 "취소"를 눌러주세요.`
+          `1시간 내 같은 정보로 주문(${checkData.orderNumber} / ${checkData.productText})하신 기록이 있어요.\n중복 실수면 "확인"(수정), 새 주문이면 "취소"`
         );
         if (wantsEdit) editOrderNumber = checkData.orderNumber;
       }
