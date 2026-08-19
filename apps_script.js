@@ -422,7 +422,7 @@ function sendAlimtalkNotification_(buyerName, productText, amount) {
   };
 
   try {
-    UrlFetchApp.fetch("https://api.solapi.com/messages/v4/send", {
+    var response = UrlFetchApp.fetch("https://api.solapi.com/messages/v4/send", {
       method: "post",
       contentType: "application/json",
       headers: {
@@ -431,8 +431,12 @@ function sendAlimtalkNotification_(buyerName, productText, amount) {
       payload: JSON.stringify(payload),
       muteHttpExceptions: true, // 실패해도 예외로 안 터지게(입금확인 처리에 영향 없도록)
     });
+    // 실패 원인 확인용 - Apps Script 편집기 "실행 기록"(왼쪽 시계 아이콘)에서 응답 내용을
+    // 볼 수 있음. 성공해도 어차피 로그는 남기고, 문제 생겼을 때만 여기서 확인하면 됨.
+    Logger.log("SOLAPI 알림톡 응답 " + response.getResponseCode() + ": " + response.getContentText());
   } catch (err) {
     // 알림톡 발송 실패는 무시함 - 입금확인 자체는 이미 정상 처리된 뒤라 손님/사장님 업무에 지장 없음
+    Logger.log("SOLAPI 알림톡 호출 중 예외: " + err);
   }
 }
 
