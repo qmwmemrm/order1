@@ -42,10 +42,14 @@ function doPost(e) {
   }
   var data = JSON.parse(e.postData.contents);
 
-  // 손님이 "최근 1시간 내 같은 정보로 주문한 기록이 있어요" 안내를 보고 "기존 주문 수정"을
+  // 손님이 "최근 24시간 내 같은 정보로 주문한 기록이 있어요" 안내를 보고 "기존 주문 수정"을
   // 선택했거나, 주문조회에서 "수정하기"로 들어온 경우 - 새 행을 또 만들지 않고 기존 행을 고침.
   if (data.updateOrderNumber) {
     return updateExistingOrder_(sheet, data);
+  }
+  // 주문조회에서 "취소하기"로 들어온 경우 - 행을 통째로 지움.
+  if (data.cancelOrderNumber) {
+    return cancelExistingOrder_(sheet, data);
   }
 
   var sameParty = data.sameParty !== false;
@@ -284,8 +288,36 @@ function updateExistingOrder_(sheet, data) {
   return jsonOut({ result: "error", message: "해당 주문번호를 찾을 수 없음" });
 }
 
+// 손님이 주문조회에서 "취소하기"를 누르면 그 행을 통째로 지움. 수정과 마찬가지로
+// 주문번호+연락처가 같이 맞아야만 취소되게 해서, 남이 주문번호만 알고 함부로
+// 남의 주문을 지우지 못하게 막음. 입금확인된 주문은 클라이언트에서 애초에 취소
+// 버튼을 안 보여주지만, 혹시 모르니 서버에서도 한 번 더 막아둠.
+function cancelExistingOrder_(sheet, data) {
+  var orderNumber = String(data.cancelOrderNumber || "").trim();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return jsonOut({ result: "error", message: "주문 데이터 없음" });
+  }
+  var values = sheet.getRange(2, 1, lastRow - 1, 18).getValues();
+  var phone = String(data.phone || "").trim();
+
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][17]) !== orderNumber) continue;
+    var storedPhone = String(values[i][4] || "").trim();
+    if (storedPhone !== phone) {
+      return jsonOut({ result: "error", message: "연락처가 일치하지 않아 취소할 수 없음" });
+    }
+    if (values[i][16] === true) {
+      return jsonOut({ result: "error", message: "입금확인된 주문은 취소할 수 없음 - 매장에 직접 문의" });
+    }
+    sheet.deleteRow(i + 2);
+    return jsonOut({ result: "success", canceled: true });
+  }
+  return jsonOut({ result: "error", message: "해당 주문번호를 찾을 수 없음" });
+}
+
 // 같은 사람이 실수로 또 주문했을 때를 대비한 중복 감지. 이름+연락처+주소가 전부 같고
-// 접수시각이 1시간 이내인 주문이 있으면 알려줌 - 손님이 "그 주문 수정할지" 고를 수 있게.
+// 접수시각이 24시간 이내인 주문이 있으면 알려줌 - 손님이 "그 주문 수정할지" 고를 수 있게.
 function checkRecentOrder_(p) {
   var result = { found: false };
   if (!checkRateLimit_("checkrecent_rl", 60)) {
@@ -303,11 +335,11 @@ function checkRecentOrder_(p) {
   if (lastRow < 2) return jsonOut(result);
 
   var data = sheet.getRange(2, 1, lastRow - 1, 18).getValues();
-  var oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  var windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
   for (var i = data.length - 1; i >= 0; i--) { // 최근 행부터 확인
     var row = data[i];
     var rowTime = row[12];
-    if (!(rowTime instanceof Date) || rowTime < oneHourAgo) continue;
+    if (!(rowTime instanceof Date) || rowTime < windowStart) continue;
     if (String(row[1] || "").trim() !== name) continue;
     if (String(row[4] || "").trim() !== phone) continue;
     if (String(row[6] || "").trim() !== address) continue;

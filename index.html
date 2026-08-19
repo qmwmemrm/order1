@@ -812,8 +812,9 @@ async function doOrderLookup(){
         <div class="review-row"><span class="k">입금 상태</span><span class="v">${data.paid ? '입금 확인됨 ✅' : '입금 확인 중'}</span></div>
       </div>
       ${data.paid
-        ? `<div class="review-notice" style="margin-top:12px;">입금 확인된 주문은 여기서 수정할 수 없어요. 변경이 필요하시면 매장으로 직접 연락해주세요.</div>`
-        : `<button type="button" class="submit-btn" style="width:100%; margin-top:12px;" onclick="startEditOrder('${orderNumber}')">✏️ 이 주문 수정하기</button>`
+        ? `<div class="review-notice" style="margin-top:12px;">입금 확인된 주문은 여기서 수정/취소할 수 없어요. 변경이 필요하시면 매장으로 직접 연락해주세요.</div>`
+        : `<button type="button" class="submit-btn" style="width:100%; margin-top:12px;" onclick="startEditOrder('${orderNumber}')">✏️ 이 주문 수정하기</button>
+           <button type="button" class="back-btn" style="width:100%; margin-top:8px;" onclick="cancelOrder('${orderNumber}')">🗑️ 이 주문 취소하기</button>`
       }
     `;
   } catch (err) {
@@ -866,6 +867,35 @@ async function startEditOrder(orderNumber){
     document.getElementById('editCheckMsg')?.remove();
     alert('확인 중 문제가 생겼어요. 다시 시도해주세요.');
   }
+}
+
+// 손님이 주문조회에서 "취소하기"를 누르면, 연락처 확인 후 그 주문을 시트에서 완전히
+// 지움. no-cors라 실제로 지워졌는지 응답을 읽을 수는 없어서, 취소 요청 보낸 뒤 같은
+// 주문번호로 다시 조회해서 "찾을 수 없음"이 뜨면 취소 성공, 그대로 보이면 실패(연락처
+// 불일치 등)로 손님이 알 수 있게 함.
+async function cancelOrder(orderNumber){
+  if (!confirm('정말 이 주문을 취소하시겠어요? 취소하면 되돌릴 수 없어요.')) return;
+  const phone = prompt('본인 확인을 위해, 주문하실 때 입력하신 연락처를 입력해주세요 (예: 01012345678)');
+  if (!phone || !phone.trim()) return;
+
+  const resultBox = document.getElementById('lookupResult');
+  resultBox.insertAdjacentHTML('beforeend', `<div class="review-notice" id="cancelMsg">취소 처리 중...</div>`);
+
+  try {
+    await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ cancelOrderNumber: orderNumber, phone: phone.trim() }),
+    });
+  } catch (err) {
+    document.getElementById('cancelMsg')?.remove();
+    alert('취소 처리 중 문제가 생겼어요. 다시 시도해주세요.');
+    return;
+  }
+
+  document.getElementById('lookupOrderNumber').value = orderNumber;
+  await doOrderLookup(); // 다시 조회해서 실제로 지워졌는지 확인
 }
 
 function goToReview(){
@@ -948,7 +978,7 @@ async function submitOrder(){
       const checkData = await checkRes.json();
       if (checkData.found) {
         const wantsEdit = confirm(
-          `1시간 내 같은 정보로 주문(${checkData.orderNumber} / ${checkData.productText})하신 기록이 있어요.\n중복 실수면 "확인"(수정), 새 주문이면 "취소"`
+          `24시간 내 같은 정보로 주문(${checkData.orderNumber} / ${checkData.productText})하신 기록이 있어요.\n중복 실수면 "확인"(수정), 새 주문이면 "취소"`
         );
         if (wantsEdit) editOrderNumber = checkData.orderNumber;
       }
