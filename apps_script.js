@@ -24,6 +24,13 @@ function forceText_(v) {
 }
 
 function doPost(e) {
+  // 1분에 30건 넘게 들어오면 스크립트로 도배하는 걸로 보고 막음. no-cors라 손님 화면엔 어차피
+  // 응답 성공 여부가 안 보이고(3초 지나면 그냥 완료 화면으로 넘어가는 구조라) 여기서 조용히
+  // 막아도 됨 - 진짜 손님이 몰려도 1분에 30건이면 거의 걸릴 일 없는 넉넉한 기준.
+  if (!checkRateLimit_("submit_rl", 30)) {
+    return ContentService.createTextOutput(JSON.stringify({ result: "rate_limited" })).setMimeType(ContentService.MimeType.JSON);
+  }
+
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
   if (!sheet) {
     sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet("주문");
@@ -159,11 +166,30 @@ function jsonOut(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
+// 1분에 몇 번까지 허용할지를 CacheService로 셈. Apps Script 웹앱은 요청자 IP를 알 방법이
+// 없어서 "누가" 많이 하는지는 구분 못 하고 "전체 합쳐서" 얼마나 왔는지만 셀 수 있음 - 그래도
+// 주문번호(6자리, 백만 가지) 전수조사처럼 짧은 시간에 수천 번씩 두드리는 건 확실히 막아줌.
+// 실제 손님 트래픽(한 명이 한 번 조회/주문)은 이 정도 기준에 절대 안 걸림.
+function checkRateLimit_(key, maxPerMinute) {
+  var cache = CacheService.getScriptCache();
+  var count = Number(cache.get(key) || 0);
+  if (count >= maxPerMinute) return false;
+  cache.put(key, String(count + 1), 60); // 60초 지나면 자동으로 초기화됨
+  return true;
+}
+
 // 손님이 "주문조회" 화면에서 주문번호(6자리)만 입력하면 그 주문 하나만 찾아서 알려줌.
 // 시트 전체를 브라우저로 내려보내면 다른 손님 정보까지 다 노출되니까, 여기서 딱 그 한 건만
 // 골라서 돌려줌. 주소도 전체 다 보여주지 않고 앞부분(시/군/구 정도)만 마스킹해서 줌.
 function lookupOrderByNumber(p) {
   var result = { found: false };
+
+  // 1분에 20번 이상 조회되면 주문번호 전수조사(브루트포스) 시도로 보고 잠깐 막음.
+  if (!checkRateLimit_("lookup_rl", 20)) {
+    result.message = "너무 많은 조회가 있었어요. 잠시 후 다시 시도해주세요.";
+    return jsonOut(result);
+  }
+
   var orderNumber = String(p.orderNumber || "").trim();
   if (!/^\d{6}$/.test(orderNumber)) {
     result.message = "주문번호는 숫자 6자리예요";
