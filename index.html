@@ -928,15 +928,29 @@ async function submitOrder(){
     return;
   }
 
+  // Apps Script exec URL은 리다이렉트를 거치느라 응답이 6~20초씩 걸릴 때가 있음(구글 쪽
+  // 자체 지연이라 서버 코드로는 못 줄임). 어차피 no-cors라 응답 성공 여부도 못 읽으니,
+  // 오래 기다리게 두지 말고 3초 지나면 백그라운드에서 계속 보내지게 두고 화면은 먼저 넘김.
+  // 진짜 네트워크가 끊긴 경우엔 보통 3초 안에 바로 실패해서 알림이 뜸.
+  const sendPromise = fetch(GOOGLE_SCRIPT_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify(orderData),
+  });
+  sendPromise.catch((err) => console.error('주문 전송 실패(백그라운드):', err));
+
   try {
-    await fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(orderData),
-    });
+    await Promise.race([
+      sendPromise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('slow')), 3000)),
+    ]);
     finish();
   } catch (err) {
+    if (err.message === 'slow') {
+      finish();
+      return;
+    }
     alert('접수 중 문제가 생겼어요. 다시 시도해주세요.');
     finalBtn.disabled = false;
     finalBtn.textContent = '네, 이대로 주문할게요';
