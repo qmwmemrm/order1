@@ -16,7 +16,6 @@ function doPost(e) {
       "배송주소", "상세주소", "우편번호", "송하인번호", "배송메모", "발송예정일",
       "접수시각", "합계금액", "광고수신동의", "동의시각"
     ]);
-    formatOrderSheet(sheet);
   }
 
   var data = JSON.parse(e.postData.contents);
@@ -46,6 +45,8 @@ function doPost(e) {
     data.marketingConsentAt || "",
   ]);
 
+  formatOrderSheet(sheet); // 주문 들어올 때마다 열 너비를 새 내용에 맞게 다시 조정
+
   return ContentService
     .createTextOutput(JSON.stringify({ result: "success" }))
     .setMimeType(ContentService.MimeType.JSON);
@@ -59,7 +60,7 @@ function doGet(e) {
 }
 
 // 시트를 보기 편하게 서식 적용 (헤더 색칠+고정, 열 너비, 줄바꿈, 금액/날짜 서식, 줄무늬 배경).
-// 새로 만들어지는 시트엔 자동으로 적용됨. 이미 만들어져 있는 "주문" 시트에 적용하려면:
+// 주문이 들어올 때마다(doPost) 자동으로 다시 적용됨. 지금 당장 기존 데이터에 적용하려면:
 // Apps Script 편집기 상단에서 함수 선택 드롭다운을 "formatOrderSheet"로 바꾸고 ▶ 실행 버튼 한 번 누르면 됨.
 function formatOrderSheet(sheet) {
   sheet = sheet || SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
