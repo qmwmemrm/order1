@@ -339,6 +339,10 @@
       <span>📦 주문번호로 내 주문 조회하기</span>
     </button>
 
+    <button type="button" class="text-toggle" onclick="openInquiryView()">
+      <span>💬 문의하기 / Q&amp;A</span>
+    </button>
+
     <section>
       <div class="eyebrow">떡 종류 선택</div>
       <div class="free-ship-banner">🚚 5만원 이상 주문 시 <b>무료배송</b>이에요!</div>
@@ -399,7 +403,7 @@
         </div>
       </div>
       <div class="consent-row">
-        <input type="checkbox" id="privacyConsent">
+        <input type="checkbox" id="privacyConsent" checked>
         <label for="privacyConsent">
           <span class="consent-title">개인정보 수집·이용에 동의합니다 (필수)</span>
           <span class="consent-sub">수집 항목: 성함, 연락처, 배송주소 · 수집 목적: 주문 접수 및 상품 배송 · 보유 기간: 주문 처리 완료 후 1년(관련 법령상 보관 의무가 있는 경우 그 기간까지). 배송을 위해 택배사에만 제공되며, 그 외에는 제공하지 않습니다. 동의하지 않으시면 주문 접수가 어려워요.</span>
@@ -434,6 +438,36 @@
       </div>
       <button type="button" class="submit-btn" style="width:100%;" onclick="doOrderLookup()">조회하기</button>
       <div id="lookupResult" style="margin-top:20px;"></div>
+      <button type="button" class="back-btn" style="width:100%; margin-top:16px;" onclick="showView('orderView')">떡 고르러 돌아가기</button>
+    </section>
+  </div>
+
+  <div class="view" id="inquiryView">
+    <header style="padding-top:26px;">
+      <h1 style="font-size:22px;">문의하기 / Q&amp;A</h1>
+      <p>궁금한 점이나 상담 내용을 남겨주시면 확인 후 답변드려요</p>
+    </header>
+    <section>
+      <div class="field">
+        <label>성함</label>
+        <input type="text" id="inquiryName" placeholder="예: 홍길동">
+      </div>
+      <div class="field">
+        <label>연락처</label>
+        <input type="tel" id="inquiryPhone" placeholder="010-0000-0000">
+      </div>
+      <div class="field">
+        <label>문의 내용</label>
+        <textarea id="inquiryText" rows="5" placeholder="궁금하신 점을 남겨주세요" style="width:100%; box-sizing:border-box; padding:12px; border-radius:10px; border:1px solid #ddd; font-family:inherit; font-size:15px;"></textarea>
+      </div>
+      <button type="button" class="submit-btn" style="width:100%;" onclick="submitInquiry()">문의 남기기</button>
+
+      <div style="margin-top:28px; border-top:1px solid #eee; padding-top:20px;">
+        <div class="review-notice">이전에 남기신 문의와 답변은 위 성함·연락처를 입력하고 아래에서 확인하실 수 있어요</div>
+        <button type="button" class="back-btn" style="width:100%; margin-top:10px;" onclick="checkMyInquiry()">내 문의 확인하기</button>
+        <div id="inquiryResult" style="margin-top:16px;"></div>
+      </div>
+
       <button type="button" class="back-btn" style="width:100%; margin-top:16px;" onclick="showView('orderView')">떡 고르러 돌아가기</button>
     </section>
   </div>
@@ -783,6 +817,81 @@ function openLookupView(){
   document.getElementById('lookupResult').innerHTML = '';
   showView('lookupView');
   window.scrollTo(0, 0);
+}
+
+function openInquiryView(){
+  document.getElementById('inquiryName').value = '';
+  document.getElementById('inquiryPhone').value = '';
+  document.getElementById('inquiryText').value = '';
+  document.getElementById('inquiryResult').innerHTML = '';
+  showView('inquiryView');
+  window.scrollTo(0, 0);
+}
+
+// 문의 남기기 - 주문 시트가 아니라 "문의" 시트에 따로 쌓임(사장님이 구글시트에서
+// 답변내용 칸에 직접 답을 적으면 됨, 별도 관리자 화면 없이 시트가 곧 관리 화면).
+async function submitInquiry(){
+  const name = document.getElementById('inquiryName').value.trim();
+  const phone = document.getElementById('inquiryPhone').value.trim();
+  const text = document.getElementById('inquiryText').value.trim();
+  if (!name || !phone || !text) {
+    alert('성함, 연락처, 문의 내용을 모두 입력해주세요.');
+    return;
+  }
+  if (!GOOGLE_SCRIPT_URL) {
+    alert('데모 화면이라 실제 접수는 안 돼요.');
+    return;
+  }
+  try {
+    await fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ inquiryName: name, inquiryPhone: phone, inquiryText: text }),
+    });
+    alert('문의가 접수됐어요. 답변은 위 성함·연락처로 다시 조회하시면 확인하실 수 있어요.');
+    document.getElementById('inquiryText').value = '';
+  } catch (err) {
+    alert('접수 중 문제가 생겼어요. 다시 시도해주세요.');
+  }
+}
+
+// 성함+연락처로 가장 최근 문의(와 답변)를 조회함. 손님한테 별도 문의번호를 안 주고
+// 성함/연락처만으로 조회하게 해서 기억하기 쉽게 함.
+async function checkMyInquiry(){
+  const name = document.getElementById('inquiryName').value.trim();
+  const phone = document.getElementById('inquiryPhone').value.trim();
+  const resultBox = document.getElementById('inquiryResult');
+  if (!name || !phone) {
+    alert('위에 성함과 연락처를 입력하고 조회해주세요.');
+    return;
+  }
+  if (!GOOGLE_SCRIPT_URL) {
+    resultBox.innerHTML = `<div class="review-notice">데모 화면이라 실제 조회는 안 돼요.</div>`;
+    return;
+  }
+  resultBox.innerHTML = `<div class="review-notice">조회 중...</div>`;
+  try {
+    const res = await fetch(`${GOOGLE_SCRIPT_URL}?action=checkInquiry&name=${encodeURIComponent(name)}&phone=${encodeURIComponent(phone)}`);
+    const data = await res.json();
+    if (!data.found) {
+      resultBox.innerHTML = `<div class="review-notice">${data.message || '문의 내역을 찾을 수 없어요.'}</div>`;
+      return;
+    }
+    resultBox.innerHTML = `
+      <div class="review-card" style="text-align:left;">
+        <div class="review-row"><span class="k">문의 내용</span><span class="v">${data.text}</span></div>
+        <div class="review-row"><span class="k">접수일시</span><span class="v">${data.askedAt}</span></div>
+        ${data.answer
+          ? `<div class="review-row"><span class="k">답변</span><span class="v">${data.answer}</span></div>
+             <div class="review-row"><span class="k">답변일시</span><span class="v">${data.answeredAt}</span></div>`
+          : `<div class="review-row"><span class="k">상태</span><span class="v">아직 답변 대기 중이에요</span></div>`
+        }
+      </div>
+    `;
+  } catch (err) {
+    resultBox.innerHTML = `<div class="review-notice">조회 중 문제가 생겼어요. 다시 시도해주세요.</div>`;
+  }
 }
 
 async function doOrderLookup(){

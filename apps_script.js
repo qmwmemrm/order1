@@ -57,6 +57,10 @@ function doPost(e) {
   if (data.cancelOrderNumber) {
     return cancelExistingOrder_(sheet, data);
   }
+  // 문의하기 화면에서 접수한 경우 - "주문" 시트가 아니라 "문의" 시트에 따로 쌓임.
+  if (data.inquiryText) {
+    return submitInquiry_(data);
+  }
 
   var sameParty = data.sameParty !== false;
 
@@ -110,6 +114,9 @@ function doGet(e) {
   }
   if (p.action === "editLookup") {
     return getOrderForEdit_(p);
+  }
+  if (p.action === "checkInquiry") {
+    return checkInquiry_(p);
   }
   return ContentService
     .createTextOutput("시골손맛 주문 접수 서버가 정상 작동 중입니다.")
@@ -499,6 +506,74 @@ function sendAlimtalkNotification_(buyerName, productText, amount) {
     // 알림톡 발송 실패는 무시함 - 입금확인 자체는 이미 정상 처리된 뒤라 손님/사장님 업무에 지장 없음
     Logger.log("SOLAPI 알림톡 호출 중 예외: " + err);
   }
+}
+
+// 문의하기 - "주문" 시트와 완전히 별도인 "문의" 시트에 쌓임. 사장님은 이 시트를
+// 열어서 "답변내용" 칸에 직접 답을 적으면 됨 - 따로 관리자 화면을 안 만들고
+// 구글시트 자체가 답변 화면 역할을 함(입금확인 체크박스랑 같은 방식).
+function submitInquiry_(data) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("문의");
+  if (!sheet) {
+    sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet("문의");
+    sheet.appendRow(["고객명", "연락처", "문의내용", "접수시각", "답변내용", "답변시각"]);
+    sheet.getRange(1, 1, 1, 6).setFontWeight("bold").setBackground("#4B5D34").setFontColor("#FFFFFF");
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(3, 320);
+    sheet.setColumnWidth(5, 320);
+  }
+  sheet.appendRow([
+    forceText_(data.inquiryName),
+    forceText_(data.inquiryPhone),
+    forceText_(data.inquiryText),
+    new Date(),
+    "",
+    "",
+  ]);
+  return ContentService.createTextOutput(JSON.stringify({ result: "success" })).setMimeType(ContentService.MimeType.JSON);
+}
+
+// 손님이 문의하기 화면에서 성함+연락처로 자기 문의 내역(과 답변)을 조회함. 문의번호를
+// 따로 안 주고 성함/연락처만으로 찾게 해서 기억하기 쉽게 함 - 같은 사람이 여러 번
+// 문의했으면 가장 최근 것만 보여줌.
+function checkInquiry_(p) {
+  var result = { found: false };
+  if (!checkRateLimit_("inquiry_rl", 30)) {
+    result.message = "너무 많은 요청이 있었어요. 잠시 후 다시 시도해주세요.";
+    return jsonOut(result);
+  }
+
+  var name = (p.name || "").trim();
+  var phone = (p.phone || "").trim();
+  if (!name || !phone) {
+    result.message = "성함과 연락처를 입력해주세요";
+    return jsonOut(result);
+  }
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("문의");
+  if (!sheet) {
+    result.message = "해당 성함/연락처로 접수된 문의를 찾을 수 없어요";
+    return jsonOut(result);
+  }
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    result.message = "해당 성함/연락처로 접수된 문의를 찾을 수 없어요";
+    return jsonOut(result);
+  }
+
+  var data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+  for (var i = data.length - 1; i >= 0; i--) { // 최근 문의부터 확인
+    var row = data[i];
+    if (String(row[0] || "").trim() !== name) continue;
+    if (String(row[1] || "").trim() !== phone) continue;
+    result.found = true;
+    result.text = row[2];
+    result.askedAt = formatDateVal_(row[3]);
+    result.answer = row[4] || "";
+    result.answeredAt = row[4] ? formatDateVal_(row[5]) : "";
+    return jsonOut(result);
+  }
+  result.message = "해당 성함/연락처로 접수된 문의를 찾을 수 없어요";
+  return jsonOut(result);
 }
 
 function maskAddress_(addr) {
