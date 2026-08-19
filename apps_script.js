@@ -54,11 +54,89 @@ function doPost(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// 브라우저에서 이 URL로 그냥 접속했을 때(GET) 확인용 응답
+// 브라우저에서 이 URL로 그냥 접속했을 때(GET) 확인용 응답 + 입금 자동확인 처리(?action=confirmPayment)
 function doGet(e) {
+  var p = (e && e.parameter) || {};
+  if (p.action === "confirmPayment") {
+    return confirmPaymentByAmount(p);
+  }
   return ContentService
     .createTextOutput("시골손맛 주문 접수 서버가 정상 작동 중입니다.")
     .setMimeType(ContentService.MimeType.TEXT);
+}
+
+// 폰 자동화 앱(매크로드로이드 등)이 입금 문자를 감지했을 때 호출하는 창구.
+// 금액이 일치하는 "미확인" 주문을 찾아서 자동으로 입금확인 체크함.
+// 같은 금액의 미확인 주문이 여러 건이면(구분 불가) 자동 처리 안 하고 사람이 확인하도록 남겨둠.
+//
+// 비밀키는 코드에 적지 않고 "스크립트 속성"에 따로 저장함(이 파일은 깃허브에 공개되어 있어서,
+// 코드에 직접 적으면 누구나 보고 악용할 수 있음). 설정 방법:
+// Apps Script 편집기 좌측 톱니바퀴(프로젝트 설정) → 맨 아래 "스크립트 속성" → 속성 추가
+// → 속성: CONFIRM_SECRET, 값: 본인만 아는 긴 랜덤 문자열 (예: 32자 이상 영문+숫자)
+function confirmPaymentByAmount(p) {
+  var secret = PropertiesService.getScriptProperties().getProperty("CONFIRM_SECRET");
+  var result = { ok: false, message: "" };
+
+  if (!secret) {
+    result.message = "서버에 CONFIRM_SECRET이 설정되지 않음";
+    return jsonOut(result);
+  }
+  if (p.key !== secret) {
+    result.message = "인증 실패";
+    return jsonOut(result);
+  }
+
+  var amount = Number(p.amount);
+  if (!amount) {
+    result.message = "금액이 없거나 잘못됨";
+    return jsonOut(result);
+  }
+  var name = (p.name || "").trim();
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
+  if (!sheet) {
+    result.message = "주문 시트 없음";
+    return jsonOut(result);
+  }
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    result.message = "주문 데이터 없음";
+    return jsonOut(result);
+  }
+
+  var data = sheet.getRange(2, 1, lastRow - 1, 17).getValues();
+  var matches = [];
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var rowAmount = row[13];   // N열: 합계금액
+    var rowConfirmed = row[16]; // Q열: 입금확인
+    var rowReceiver = String(row[1] || ""); // B열: 수취인명
+    if (rowConfirmed === true) continue;
+    if (Number(rowAmount) !== amount) continue;
+    matches.push({ sheetRow: i + 2, receiver: rowReceiver });
+  }
+
+  if (name && matches.length > 1) {
+    var nameMatches = matches.filter(function (m) {
+      return m.receiver.indexOf(name) !== -1 || name.indexOf(m.receiver) !== -1;
+    });
+    if (nameMatches.length >= 1) matches = nameMatches;
+  }
+
+  if (matches.length === 0) {
+    result.message = "금액 " + amount + "원과 일치하는 미확인 주문 없음";
+  } else if (matches.length > 1) {
+    result.message = "같은 금액(" + amount + "원) 미확인 주문이 " + matches.length + "건이라 자동확인 보류 - 직접 확인 필요";
+  } else {
+    sheet.getRange(matches[0].sheetRow, 17).setValue(true);
+    result.ok = true;
+    result.message = "입금확인 처리됨: " + matches[0].receiver + " / " + amount + "원";
+  }
+  return jsonOut(result);
+}
+
+function jsonOut(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
 // 시트를 보기 편하게 서식 적용 (헤더 색칠+고정, 열 너비, 줄바꿈, 금액/날짜 서식, 줄무늬 배경).
