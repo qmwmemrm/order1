@@ -16,6 +16,7 @@ function doPost(e) {
       "배송주소", "상세주소", "우편번호", "송하인번호", "배송메모", "발송예정일",
       "접수시각", "합계금액", "광고수신동의", "동의시각"
     ]);
+    formatOrderSheet(sheet);
   }
 
   var data = JSON.parse(e.postData.contents);
@@ -55,4 +56,40 @@ function doGet(e) {
   return ContentService
     .createTextOutput("시골손맛 주문 접수 서버가 정상 작동 중입니다.")
     .setMimeType(ContentService.MimeType.TEXT);
+}
+
+// 시트를 보기 편하게 서식 적용 (헤더 색칠+고정, 열 너비, 줄바꿈, 금액/날짜 서식, 줄무늬 배경).
+// 새로 만들어지는 시트엔 자동으로 적용됨. 이미 만들어져 있는 "주문" 시트에 적용하려면:
+// Apps Script 편집기 상단에서 함수 선택 드롭다운을 "formatOrderSheet"로 바꾸고 ▶ 실행 버튼 한 번 누르면 됨.
+function formatOrderSheet(sheet) {
+  sheet = sheet || SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
+  if (!sheet) return;
+
+  var COLS = 16;
+  sheet.getRange(1, 1, 1, COLS)
+    .setFontWeight("bold")
+    .setBackground("#4B5D34")
+    .setFontColor("#FFFFFF")
+    .setHorizontalAlignment("center");
+  sheet.setFrozenRows(1);
+
+  var widths = {
+    1: 100, 2: 100, 3: 260, 4: 60, 5: 120, 6: 120, 7: 220, 8: 140,
+    9: 90, 10: 120, 11: 180, 12: 110, 13: 150, 14: 100, 15: 90, 16: 150,
+  };
+  Object.keys(widths).forEach(function (col) {
+    sheet.setColumnWidth(Number(col), widths[col]);
+  });
+
+  var lastRow = Math.max(sheet.getMaxRows(), 2);
+  // 옵션정보(3) / 배송주소(7) / 배송메모(11): 길어질 수 있어서 줄바꿈
+  [3, 7, 11].forEach(function (col) {
+    sheet.getRange(2, col, lastRow - 1, 1).setWrap(true);
+  });
+  sheet.getRange(2, 14, lastRow - 1, 1).setNumberFormat('#,##0"원"'); // 합계금액
+  sheet.getRange(2, 13, lastRow - 1, 1).setNumberFormat("yyyy-mm-dd hh:mm"); // 접수시각
+
+  sheet.getBandings().forEach(function (b) { b.remove(); });
+  sheet.getRange(1, 1, lastRow, COLS)
+    .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREEN, true, false);
 }
