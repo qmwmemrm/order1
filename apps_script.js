@@ -41,6 +41,13 @@ function doPost(e) {
     ]);
   }
   var data = JSON.parse(e.postData.contents);
+
+  // 손님이 "최근 1시간 내 같은 정보로 주문한 기록이 있어요" 안내를 보고 "기존 주문 수정"을
+  // 선택했거나, 주문조회에서 "수정하기"로 들어온 경우 - 새 행을 또 만들지 않고 기존 행을 고침.
+  if (data.updateOrderNumber) {
+    return updateExistingOrder_(sheet, data);
+  }
+
   var sameParty = data.sameParty !== false;
 
   // 구매자명/송하인번호: "다른 분이 받으신다"고 체크했으면 보내는사람(주문자) 정보를 씀.
@@ -85,6 +92,12 @@ function doGet(e) {
   }
   if (p.action === "lookupOrder") {
     return lookupOrderByNumber(p);
+  }
+  if (p.action === "checkRecent") {
+    return checkRecentOrder_(p);
+  }
+  if (p.action === "editLookup") {
+    return getOrderForEdit_(p);
   }
   return ContentService
     .createTextOutput("시골손맛 주문 접수 서버가 정상 작동 중입니다.")
@@ -224,6 +237,122 @@ function lookupOrderByNumber(p) {
       result.addressMasked = maskAddress_(row[6]);          // 배송주소(일부만)
       return jsonOut(result);
     }
+  }
+  result.message = "해당 번호의 주문을 찾을 수 없어요";
+  return jsonOut(result);
+}
+
+// 손님이 실수로 잘못 주문했을 때, 새 행을 또 만들지 않고 기존 주문 행을 고쳐씀.
+// 주문번호만으로는 아무나 남의 주문을 고칠 수 있으니, 그 주문에 저장된 연락처와
+// 손님이 지금 입력한 연락처가 같은지 한 번 더 확인하고 나서만 수정함.
+function updateExistingOrder_(sheet, data) {
+  var orderNumber = String(data.updateOrderNumber || "").trim();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return jsonOut({ result: "error", message: "주문 데이터 없음" });
+  }
+  var values = sheet.getRange(2, 1, lastRow - 1, 18).getValues();
+  var phone = String(data.phone || "").trim();
+
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][17]) !== orderNumber) continue;
+    var storedPhone = String(values[i][4] || "").trim();
+    if (storedPhone !== phone) {
+      return jsonOut({ result: "error", message: "연락처가 일치하지 않아 수정할 수 없음" });
+    }
+    var row = i + 2;
+    sheet.getRange(row, 1).setValue(forceText_(data.name));           // 구매자명 (수정은 항상 본인 기준으로 단순화)
+    sheet.getRange(row, 2).setValue(forceText_(data.name));           // 수취인명
+    sheet.getRange(row, 3).setValue(forceText_(data.productText));    // 옵션정보
+    sheet.getRange(row, 5).setValue(forceText_(data.phone));          // 연락처1
+    sheet.getRange(row, 7).setValue(forceText_(data.address));        // 배송주소
+    sheet.getRange(row, 8).setValue(forceText_(data.addressDetail));  // 상세주소
+    sheet.getRange(row, 9).setValue(forceText_(data.zipcode));        // 우편번호
+    sheet.getRange(row, 10).setValue(forceText_(data.phone));         // 송하인번호 (수정은 항상 본인 기준)
+    sheet.getRange(row, 11).setValue(forceText_(data.note));          // 배송메모
+    sheet.getRange(row, 12).setValue(data.shipDate || "");            // 발송예정일
+    sheet.getRange(row, 14).setValue(data.totalAmount || 0);          // 합계금액
+    formatNewOrderRow(sheet, row);
+    return jsonOut({ result: "success", updated: true });
+  }
+  return jsonOut({ result: "error", message: "해당 주문번호를 찾을 수 없음" });
+}
+
+// 같은 사람이 실수로 또 주문했을 때를 대비한 중복 감지. 이름+연락처+주소가 전부 같고
+// 접수시각이 1시간 이내인 주문이 있으면 알려줌 - 손님이 "그 주문 수정할지" 고를 수 있게.
+function checkRecentOrder_(p) {
+  var result = { found: false };
+  if (!checkRateLimit_("checkrecent_rl", 60)) {
+    return jsonOut(result); // 너무 잦으면 그냥 "없음"으로 취급 (새 주문 진행에는 지장 없음)
+  }
+
+  var name = (p.name || "").trim();
+  var phone = (p.phone || "").trim();
+  var address = (p.address || "").trim();
+  if (!name || !phone) return jsonOut(result);
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
+  if (!sheet) return jsonOut(result);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return jsonOut(result);
+
+  var data = sheet.getRange(2, 1, lastRow - 1, 18).getValues();
+  var oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  for (var i = data.length - 1; i >= 0; i--) { // 최근 행부터 확인
+    var row = data[i];
+    var rowTime = row[12];
+    if (!(rowTime instanceof Date) || rowTime < oneHourAgo) continue;
+    if (String(row[1] || "").trim() !== name) continue;
+    if (String(row[4] || "").trim() !== phone) continue;
+    if (String(row[6] || "").trim() !== address) continue;
+    result.found = true;
+    result.orderNumber = String(row[17] || "");
+    result.productText = row[2];
+    result.receivedAt = formatDateVal_(row[12]);
+    return jsonOut(result);
+  }
+  return jsonOut(result);
+}
+
+// 손님이 주문조회에서 "수정하기"를 누르면, 주문번호+연락처가 같이 맞아야 전체 정보를
+// 내려줌 (조회 화면(lookupOrder)은 주소를 마스킹해서 보여주지만, 수정하려면 원본 폼을
+// 채워야 해서 원본이 필요함 - 그래서 조회보다 한 단계 더 강한 인증을 요구함).
+function getOrderForEdit_(p) {
+  var result = { found: false };
+  if (!checkRateLimit_("editlookup_rl", 30)) {
+    result.message = "너무 많은 요청이 있었어요. 잠시 후 다시 시도해주세요.";
+    return jsonOut(result);
+  }
+
+  var orderNumber = String(p.orderNumber || "").trim();
+  var phone = String(p.phone || "").trim();
+  if (!/^\d{6}$/.test(orderNumber) || !phone) {
+    result.message = "주문번호와 연락처를 정확히 입력해주세요";
+    return jsonOut(result);
+  }
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
+  if (!sheet) { result.message = "주문 시트 없음"; return jsonOut(result); }
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) { result.message = "해당 번호의 주문을 찾을 수 없어요"; return jsonOut(result); }
+
+  var data = sheet.getRange(2, 1, lastRow - 1, 18).getValues();
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    if (String(row[17]) !== orderNumber) continue;
+    if (String(row[4] || "").trim() !== phone) {
+      result.message = "주문번호와 연락처가 일치하지 않아요";
+      return jsonOut(result);
+    }
+    result.found = true;
+    result.name = row[1];
+    result.phone = row[4];
+    result.address = row[6];
+    result.addressDetail = row[7];
+    result.zipcode = row[8];
+    result.note = row[10];
+    result.shipDate = row[11] || "";
+    return jsonOut(result);
   }
   result.message = "해당 번호의 주문을 찾을 수 없어요";
   return jsonOut(result);
