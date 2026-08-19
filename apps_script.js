@@ -74,13 +74,19 @@ function formatOrderSheet(sheet) {
     .setHorizontalAlignment("center");
   sheet.setFrozenRows(1);
 
-  SpreadsheetApp.flush(); // 위에서 쓴 내용이 실제로 반영된 다음에 너비를 재야 정확하게 맞춰짐
-  sheet.autoResizeColumns(1, COLS); // 나머지 열은 실제 내용 길이에 맞게 자동 조정
+  // autoResizeColumns는 Apps Script 자체 버그로 안정적으로 안 먹혀서(구글 이슈트래커에
+  // 등록된 미해결 버그) 대신 실제 데이터 길이에 맞춘 고정폭을 씀. 정말 자동으로 맞추고
+  // 싶으면 시트에서 열 전체 선택 → 우클릭 → "열 크기 조정" → "데이터에 맞추기"(이건 정상 작동함).
+  var widths = {
+    1: 100, 2: 100, 3: 260, 4: 55, 5: 110, 6: 110, 7: 220, 8: 140,
+    9: 80, 10: 110, 11: 180, 12: 100, 13: 140, 14: 100, 15: 90, 16: 160,
+  };
+  Object.keys(widths).forEach(function (col) {
+    sheet.setColumnWidth(Number(col), widths[col]);
+  });
 
   var lastRow = Math.max(sheet.getMaxRows(), 2);
-  // 옵션정보(3): 상품 여러 개 담기면 내용이 매우 길어질 수 있어서
-  // 자동맞춤 대신 적당한 너비로 고정하고 줄바꿈으로 처리. 나머지 열은 위에서 자동맞춤됨.
-  sheet.setColumnWidth(3, 260);
+  // 옵션정보(3): 상품 여러 개 담기면 내용이 매우 길어질 수 있어서 줄바꿈으로 처리
   sheet.getRange(2, 3, lastRow - 1, 1).setWrap(true);
   sheet.getRange(2, 14, lastRow - 1, 1).setNumberFormat('#,##0"원"'); // 합계금액
   sheet.getRange(2, 13, lastRow - 1, 1).setNumberFormat("yyyy-mm-dd hh:mm"); // 접수시각
