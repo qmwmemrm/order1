@@ -74,6 +74,7 @@ function formatOrderSheet(sheet) {
     .setHorizontalAlignment("center");
   sheet.setFrozenRows(1);
 
+  SpreadsheetApp.flush(); // 위에서 쓴 내용이 실제로 반영된 다음에 너비를 재야 정확하게 맞춰짐
   sheet.autoResizeColumns(1, COLS); // 나머지 열은 실제 내용 길이에 맞게 자동 조정
 
   var lastRow = Math.max(sheet.getMaxRows(), 2);
