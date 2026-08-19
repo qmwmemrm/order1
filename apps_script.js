@@ -45,6 +45,7 @@ function doPost(e) {
     data.totalAmount || 0,      // 합계금액
     data.marketingConsent ? "동의" : "미동의",
     data.marketingConsentAt || "",
+    false,                      // 입금확인 (새 주문은 항상 미확인으로 시작, 사장님이 나중에 체크)
     data.orderNumber || "",     // 주문번호 (손님 화면에 뜨는 6자리 번호, 나중에 주문조회용)
   ]);
 
