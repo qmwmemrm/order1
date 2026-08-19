@@ -86,7 +86,8 @@ function confirmPaymentByAmount(p) {
     return jsonOut(result);
   }
 
-  var amount = Number(p.amount);
+  // 폰 쪽에서 "66,000"처럼 콤마가 낀 채로 보내도 되게, 숫자 아닌 문자는 다 제거하고 읽음
+  var amount = Number(String(p.amount || "").replace(/[^\d]/g, ""));
   if (!amount) {
     result.message = "금액이 없거나 잘못됨";
     return jsonOut(result);
