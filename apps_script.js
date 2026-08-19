@@ -37,8 +37,14 @@ function doPost(e) {
     sheet.appendRow([
       "구매자명", "수취인명", "옵션정보", "수량", "연락처1", "연락처2",
       "배송주소", "상세주소", "우편번호", "송하인번호", "배송메모", "발송예정일",
-      "접수시각", "합계금액", "광고수신동의", "동의시각", "입금확인", "주문번호"
+      "접수시각", "합계금액", "광고수신동의", "동의시각", "입금확인", "주문번호",
+      "개인정보동의시각", "취소여부"
     ]);
+  }
+  // 시트가 이미 예전부터 있었으면(헤더 만드는 코드가 위에서 다시 안 돌아서) 새로 추가한
+  // 두 칸(개인정보동의시각/취소여부) 헤더 글자가 비어있을 수 있음 - 자동으로 채워줌.
+  if (sheet.getRange(1, 19).getValue() !== "개인정보동의시각") {
+    sheet.getRange(1, 19, 1, 2).setValues([["개인정보동의시각", "취소여부"]]);
   }
   var data = JSON.parse(e.postData.contents);
 
@@ -78,6 +84,8 @@ function doPost(e) {
     data.marketingConsentAt || "",
     false,                      // 입금확인 (새 주문은 항상 미확인으로 시작, 사장님이 나중에 체크)
     forceText_(data.orderNumber), // 주문번호 (손님 화면에 뜨는 6자리 번호, 나중에 주문조회용) - 앞자리 0 보존
+    data.privacyConsentAt || "", // 개인정보동의시각 (필수 동의 - 법적 근거 기록용)
+    false,                      // 취소여부 (새 주문은 항상 취소 안 된 상태로 시작)
   ]);
 
   formatNewOrderRow(sheet, sheet.getLastRow()); // 방금 추가된 행 1개만 서식 (전체 재적용은 느려서 안 함)
@@ -148,17 +156,19 @@ function confirmPaymentByAmount(p) {
     return jsonOut(result);
   }
 
-  var data = sheet.getRange(2, 1, lastRow - 1, 17).getValues();
+  var data = sheet.getRange(2, 1, lastRow - 1, 20).getValues();
   var matches = [];
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
     var rowAmount = row[13];   // N열: 합계금액
     var rowConfirmed = row[16]; // Q열: 입금확인
+    var rowCanceled = row[19]; // T열: 취소여부
     // 실제로 계좌에서 돈을 보내는 사람은 항상 "구매자명"(A열)임. "다른 분이 받으신다"를
     // 체크한 주문은 수취인(B열)과 구매자가 다른 사람이라, 입금자명 대조는 구매자명으로
     // 해야 함(같은 분이면 doPost에서 구매자명=수취인명으로 이미 같게 저장되니 문제 없음).
     var rowBuyer = String(row[0] || ""); // A열: 구매자명
     if (rowConfirmed === true) continue;
+    if (rowCanceled === true) continue; // 취소된 주문은 입금확인 대상에서 제외
     if (Number(rowAmount) !== amount) continue;
     matches.push({ sheetRow: i + 2, buyer: rowBuyer, productText: String(row[2] || "") });
   }
@@ -233,7 +243,7 @@ function lookupOrderByNumber(p) {
     return jsonOut(result);
   }
 
-  var data = sheet.getRange(2, 1, lastRow - 1, 18).getValues();
+  var data = sheet.getRange(2, 1, lastRow - 1, 20).getValues();
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
     if (String(row[17]) === orderNumber) { // R열: 주문번호
@@ -245,6 +255,7 @@ function lookupOrderByNumber(p) {
       result.receivedAt = formatDateVal_(row[12]);         // 접수시각
       result.paid = row[16] === true;                      // 입금확인
       result.addressMasked = maskAddress_(row[6]);          // 배송주소(일부만)
+      result.canceled = row[19] === true;                   // 취소여부
       return jsonOut(result);
     }
   }
@@ -261,7 +272,7 @@ function updateExistingOrder_(sheet, data) {
   if (lastRow < 2) {
     return jsonOut({ result: "error", message: "주문 데이터 없음" });
   }
-  var values = sheet.getRange(2, 1, lastRow - 1, 18).getValues();
+  var values = sheet.getRange(2, 1, lastRow - 1, 20).getValues();
   var phone = String(data.phone || "").trim();
 
   for (var i = 0; i < values.length; i++) {
@@ -269,6 +280,9 @@ function updateExistingOrder_(sheet, data) {
     var storedPhone = String(values[i][4] || "").trim();
     if (storedPhone !== phone) {
       return jsonOut({ result: "error", message: "연락처가 일치하지 않아 수정할 수 없음" });
+    }
+    if (values[i][19] === true) {
+      return jsonOut({ result: "error", message: "취소된 주문은 수정할 수 없음" });
     }
     var row = i + 2;
     sheet.getRange(row, 1).setValue(forceText_(data.name));           // 구매자명 (수정은 항상 본인 기준으로 단순화)
@@ -288,17 +302,19 @@ function updateExistingOrder_(sheet, data) {
   return jsonOut({ result: "error", message: "해당 주문번호를 찾을 수 없음" });
 }
 
-// 손님이 주문조회에서 "취소하기"를 누르면 그 행을 통째로 지움. 수정과 마찬가지로
-// 주문번호+연락처가 같이 맞아야만 취소되게 해서, 남이 주문번호만 알고 함부로
-// 남의 주문을 지우지 못하게 막음. 입금확인된 주문은 클라이언트에서 애초에 취소
-// 버튼을 안 보여주지만, 혹시 모르니 서버에서도 한 번 더 막아둠.
+// 손님이 주문조회에서 "취소하기"를 누르면 행을 지우지 않고 "취소여부"만 체크함(소프트
+// 삭제). 손님이 실수로 취소를 눌렀을 때 데이터가 완전히 사라지면 되돌릴 방법이 없어서,
+// 행은 그대로 남기고 표시만 해둠 - 사장님이 시트에서 취소여부 체크만 다시 풀면 복구됨.
+// 수정과 마찬가지로 주문번호+연락처가 같이 맞아야만 취소되게 해서, 남이 주문번호만
+// 알고 함부로 남의 주문을 취소하지 못하게 막음. 입금확인된 주문은 클라이언트에서
+// 애초에 취소 버튼을 안 보여주지만, 혹시 모르니 서버에서도 한 번 더 막아둠.
 function cancelExistingOrder_(sheet, data) {
   var orderNumber = String(data.cancelOrderNumber || "").trim();
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) {
     return jsonOut({ result: "error", message: "주문 데이터 없음" });
   }
-  var values = sheet.getRange(2, 1, lastRow - 1, 18).getValues();
+  var values = sheet.getRange(2, 1, lastRow - 1, 20).getValues();
   var phone = String(data.phone || "").trim();
 
   for (var i = 0; i < values.length; i++) {
@@ -310,7 +326,10 @@ function cancelExistingOrder_(sheet, data) {
     if (values[i][16] === true) {
       return jsonOut({ result: "error", message: "입금확인된 주문은 취소할 수 없음 - 매장에 직접 문의" });
     }
-    sheet.deleteRow(i + 2);
+    if (values[i][19] === true) {
+      return jsonOut({ result: "error", message: "이미 취소된 주문임" });
+    }
+    sheet.getRange(i + 2, 20).setValue(true); // 취소여부 체크 (행은 삭제하지 않음)
     return jsonOut({ result: "success", canceled: true });
   }
   return jsonOut({ result: "error", message: "해당 주문번호를 찾을 수 없음" });
@@ -334,10 +353,11 @@ function checkRecentOrder_(p) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return jsonOut(result);
 
-  var data = sheet.getRange(2, 1, lastRow - 1, 18).getValues();
+  var data = sheet.getRange(2, 1, lastRow - 1, 20).getValues();
   var windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
   for (var i = data.length - 1; i >= 0; i--) { // 최근 행부터 확인
     var row = data[i];
+    if (row[19] === true) continue; // 취소된 주문은 중복감지 대상에서 제외
     var rowTime = row[12];
     if (!(rowTime instanceof Date) || rowTime < windowStart) continue;
     if (String(row[1] || "").trim() !== name) continue;
@@ -374,12 +394,16 @@ function getOrderForEdit_(p) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) { result.message = "해당 번호의 주문을 찾을 수 없어요"; return jsonOut(result); }
 
-  var data = sheet.getRange(2, 1, lastRow - 1, 18).getValues();
+  var data = sheet.getRange(2, 1, lastRow - 1, 20).getValues();
   for (var i = 0; i < data.length; i++) {
     var row = data[i];
     if (String(row[17]) !== orderNumber) continue;
     if (String(row[4] || "").trim() !== phone) {
       result.message = "주문번호와 연락처가 일치하지 않아요";
+      return jsonOut(result);
+    }
+    if (row[19] === true) {
+      result.message = "취소된 주문은 수정할 수 없어요";
       return jsonOut(result);
     }
     result.found = true;
@@ -500,6 +524,7 @@ function formatNewOrderRow(sheet, row) {
   sheet.getRange(row, 13).setNumberFormat("yyyy-mm-dd hh:mm"); // 접수시각
   sheet.getRange(row, 14).setNumberFormat('#,##0"원"'); // 합계금액
   sheet.getRange(row, 17).insertCheckboxes(); // 입금확인
+  sheet.getRange(row, 20).insertCheckboxes(); // 취소여부
 }
 
 // 시트 전체를 보기 편하게 서식 적용 (헤더 색칠+고정, 열 너비, 줄무늬 배경 등).
@@ -510,7 +535,7 @@ function formatOrderSheet(sheet) {
   sheet = sheet || SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
   if (!sheet) return;
 
-  var COLS = 18;
+  var COLS = 20;
   sheet.getRange(1, 1, 1, COLS)
     .setFontWeight("bold")
     .setBackground("#4B5D34")
@@ -524,6 +549,7 @@ function formatOrderSheet(sheet) {
   var widths = {
     1: 100, 2: 100, 3: 260, 4: 55, 5: 110, 6: 110, 7: 220, 8: 140,
     9: 80, 10: 110, 11: 180, 12: 100, 13: 140, 14: 100, 15: 90, 16: 160, 17: 90, 18: 90,
+    19: 160, 20: 70,
   };
   Object.keys(widths).forEach(function (col) {
     sheet.setColumnWidth(Number(col), widths[col]);
@@ -557,7 +583,8 @@ function resetOrderSheet() {
   sheet.appendRow([
     "구매자명", "수취인명", "옵션정보", "수량", "연락처1", "연락처2",
     "배송주소", "상세주소", "우편번호", "송하인번호", "배송메모", "발송예정일",
-    "접수시각", "합계금액", "광고수신동의", "동의시각", "입금확인", "주문번호"
+    "접수시각", "합계금액", "광고수신동의", "동의시각", "입금확인", "주문번호",
+    "개인정보동의시각", "취소여부"
   ]);
   formatOrderSheet(sheet);
 }

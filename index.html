@@ -399,6 +399,13 @@
         </div>
       </div>
       <div class="consent-row">
+        <input type="checkbox" id="privacyConsent">
+        <label for="privacyConsent">
+          <span class="consent-title">개인정보 수집·이용에 동의합니다 (필수)</span>
+          <span class="consent-sub">수집 항목: 성함, 연락처, 배송주소 · 수집 목적: 주문 접수 및 상품 배송 · 보유 기간: 주문 처리 완료 후 1년(관련 법령상 보관 의무가 있는 경우 그 기간까지). 배송을 위해 택배사에만 제공되며, 그 외에는 제공하지 않습니다. 동의하지 않으시면 주문 접수가 어려워요.</span>
+        </label>
+      </div>
+      <div class="consent-row">
         <input type="checkbox" id="marketingConsent">
         <label for="marketingConsent">
           <span class="consent-title">광고성 정보(문자) 수신에 동의합니다</span>
@@ -809,12 +816,14 @@ async function doOrderLookup(){
         <div class="review-row"><span class="k">접수일시</span><span class="v">${data.receivedAt}</span></div>
         ${data.shipDate ? `<div class="review-row"><span class="k">받고싶은 날짜</span><span class="v">${data.shipDate}</span></div>` : ''}
         <div class="review-row"><span class="k">배송지역</span><span class="v">${data.addressMasked}</span></div>
-        <div class="review-row"><span class="k">입금 상태</span><span class="v">${data.paid ? '입금 확인됨 ✅' : '입금 확인 중'}</span></div>
+        <div class="review-row"><span class="k">입금 상태</span><span class="v">${data.canceled ? '취소된 주문' : (data.paid ? '입금 확인됨 ✅' : '입금 확인 중')}</span></div>
       </div>
-      ${data.paid
-        ? `<div class="review-notice" style="margin-top:12px;">입금 확인된 주문은 여기서 수정/취소할 수 없어요. 변경이 필요하시면 매장으로 직접 연락해주세요.</div>`
-        : `<button type="button" class="submit-btn" style="width:100%; margin-top:12px;" onclick="startEditOrder('${orderNumber}')">✏️ 이 주문 수정하기</button>
-           <button type="button" class="back-btn" style="width:100%; margin-top:8px;" onclick="cancelOrder('${orderNumber}')">🗑️ 이 주문 취소하기</button>`
+      ${data.canceled
+        ? `<div class="review-notice" style="margin-top:12px;">이미 취소된 주문이에요. 다시 주문하시려면 새로 접수해주세요.</div>`
+        : data.paid
+          ? `<div class="review-notice" style="margin-top:12px;">입금 확인된 주문은 여기서 수정/취소할 수 없어요. 변경이 필요하시면 매장으로 직접 연락해주세요.</div>`
+          : `<button type="button" class="submit-btn" style="width:100%; margin-top:12px;" onclick="startEditOrder('${orderNumber}')">✏️ 이 주문 수정하기</button>
+             <button type="button" class="back-btn" style="width:100%; margin-top:8px;" onclick="cancelOrder('${orderNumber}')">🗑️ 이 주문 취소하기</button>`
       }
     `;
   } catch (err) {
@@ -869,12 +878,13 @@ async function startEditOrder(orderNumber){
   }
 }
 
-// 손님이 주문조회에서 "취소하기"를 누르면, 연락처 확인 후 그 주문을 시트에서 완전히
-// 지움. no-cors라 실제로 지워졌는지 응답을 읽을 수는 없어서, 취소 요청 보낸 뒤 같은
-// 주문번호로 다시 조회해서 "찾을 수 없음"이 뜨면 취소 성공, 그대로 보이면 실패(연락처
-// 불일치 등)로 손님이 알 수 있게 함.
+// 손님이 주문조회에서 "취소하기"를 누르면, 연락처 확인 후 그 주문을 "취소됨"으로
+// 표시함(행을 지우진 않음 - 실수로 취소해도 매장에서 복구 가능하게). no-cors라
+// 실제로 처리됐는지 응답을 읽을 수는 없어서, 취소 요청 보낸 뒤 같은 주문번호로
+// 다시 조회해서 "취소된 주문"으로 바뀌어 보이면 성공, 그대로면 실패(연락처 불일치
+// 등)로 손님이 알 수 있게 함.
 async function cancelOrder(orderNumber){
-  if (!confirm('정말 이 주문을 취소하시겠어요? 취소하면 되돌릴 수 없어요.')) return;
+  if (!confirm('정말 이 주문을 취소하시겠어요? 취소 후 다시 필요하시면 매장으로 문의해주세요.')) return;
   const phone = prompt('본인 확인을 위해, 주문하실 때 입력하신 연락처를 입력해주세요 (예: 01012345678)');
   if (!phone || !phone.trim()) return;
 
@@ -895,7 +905,7 @@ async function cancelOrder(orderNumber){
   }
 
   document.getElementById('lookupOrderNumber').value = orderNumber;
-  await doOrderLookup(); // 다시 조회해서 실제로 지워졌는지 확인
+  await doOrderLookup(); // 다시 조회해서 "취소된 주문"으로 바뀌었는지(=성공) 확인
 }
 
 function goToReview(){
@@ -908,6 +918,10 @@ function goToReview(){
   }
   if (!address) {
     alert('배송 주소를 검색해서 선택해주세요.');
+    return;
+  }
+  if (!document.getElementById('privacyConsent').checked) {
+    alert('개인정보 수집·이용에 동의해주셔야 주문이 가능해요.');
     return;
   }
   if (document.getElementById('customDateToggle').checked && !shipDateInput.value) {
@@ -1015,6 +1029,7 @@ async function submitOrder(){
     totalAmount: total,
     marketingConsent: marketingConsent,
     marketingConsentAt: marketingConsent ? new Date().toISOString() : null,
+    privacyConsentAt: new Date().toISOString(), // 개인정보 동의는 필수라 항상 기록됨
     submittedAt: new Date().toISOString(),
   };
 
