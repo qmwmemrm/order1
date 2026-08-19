@@ -159,17 +159,22 @@ function confirmPaymentByAmount(p) {
     matches.push({ sheetRow: i + 2, buyer: rowBuyer, productText: String(row[2] || "") });
   }
 
-  if (name && matches.length > 1) {
-    var nameMatches = matches.filter(function (m) {
+  // 입금자명이 넘어온 경우, 금액이 맞는 미확인 주문이 "1건뿐이어도" 반드시 이름까지
+  // 맞는지 확인함. (예전엔 매치가 2건 이상일 때만 이름을 대조해서, 다른 사람이 우연히
+  // 같은 금액을 입금해도 그 금액의 미확인 주문이 1건뿐이면 이름 상관없이 그냥 확인
+  // 처리되던 버그가 있었음 - 실제로 발생해서 신고받음.)
+  if (name) {
+    matches = matches.filter(function (m) {
       return m.buyer.indexOf(name) !== -1 || name.indexOf(m.buyer) !== -1;
     });
-    if (nameMatches.length >= 1) matches = nameMatches;
   }
 
   if (matches.length === 0) {
-    result.message = "금액 " + amount + "원과 일치하는 미확인 주문 없음";
+    result.message = name
+      ? "금액 " + amount + "원은 맞지만 입금자명(" + name + ")과 일치하는 미확인 주문이 없음 - 직접 확인 필요"
+      : "금액 " + amount + "원과 일치하는 미확인 주문 없음";
   } else if (matches.length > 1) {
-    result.message = "같은 금액(" + amount + "원) 미확인 주문이 " + matches.length + "건이라 자동확인 보류 - 직접 확인 필요";
+    result.message = "같은 조건(" + amount + "원" + (name ? ", " + name : "") + ")의 미확인 주문이 " + matches.length + "건이라 자동확인 보류 - 직접 확인 필요";
   } else {
     sheet.getRange(matches[0].sheetRow, 17).setValue(true);
     result.ok = true;
