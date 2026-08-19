@@ -87,7 +87,10 @@ function formatOrderSheet(sheet) {
     sheet.setColumnWidth(Number(col), widths[col]);
   });
 
-  var lastRow = Math.max(sheet.getMaxRows(), 2);
+  // getMaxRows()는 시트 전체 용량(새로 만들면 보통 1000행)이라 그걸 쓰면 매번
+  // 빈 행 수백~수천 개까지 서식/체크박스를 입히느라 느려짐(주문 접수가 멈춘 것처럼 보임).
+  // getLastRow()는 실제 데이터가 있는 마지막 행이라 이걸 써야 함.
+  var lastRow = Math.max(sheet.getLastRow(), 2);
   // 옵션정보(3): 상품 여러 개 담기면 내용이 매우 길어질 수 있어서 줄바꿈으로 처리
   sheet.getRange(2, 3, lastRow - 1, 1).setWrap(true);
   sheet.getRange(2, 14, lastRow - 1, 1).setNumberFormat('#,##0"원"'); // 합계금액
