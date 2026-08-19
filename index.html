@@ -275,6 +275,12 @@
   .bank-row{display:flex; justify-content:space-between; padding:5px 0; font-size:var(--fs-summary);}
   .bank-row .k{color:var(--ink-soft);}
   .bank-row .v{font-weight:700;}
+  .copy-btn{
+    margin-left:8px; padding:3px 10px; border-radius:8px; border:1.5px solid var(--mugwort-deep);
+    background:var(--white); color:var(--mugwort-deep); font-size:12px; font-weight:700;
+    font-family:inherit; cursor:pointer; vertical-align:middle;
+  }
+  .copy-btn.copied{background:var(--mugwort-deep); color:#fff;}
   .bank-note{font-size:12px; color:var(--ink-soft); margin-top:10px; line-height:1.5;}
   body.large-text .bank-note{font-size:14px;}
 
@@ -427,7 +433,7 @@
     <div class="confirm">
       <div class="seal">접수<br>완료</div>
       <h2>주문 잘 받았어요</h2>
-      <p>확인 후 안내 드릴게요.<br>따뜻하게 쪄서 보내드릴게요 🍡</p>
+      <p>따뜻하게 쪄서 보내드릴게요 🍡</p>
 
       <div class="review-card" style="text-align:left;">
         <h3>주문 내역</h3>
@@ -442,7 +448,7 @@
       <div class="bank-card">
         <h3>입금 계좌 안내</h3>
         <div class="bank-row"><span class="k">은행</span><span class="v">농협</span></div>
-        <div class="bank-row"><span class="k">계좌번호</span><span class="v">351-1328-8591-63</span></div>
+        <div class="bank-row"><span class="k">계좌번호</span><span class="v">351-1328-8591-63 <button type="button" class="copy-btn" id="copyAccountBtn" data-copy="351-1328-8591-63">복사</button></span></div>
         <div class="bank-row"><span class="k">예금주</span><span class="v">(주)시골손맛농업회사법인</span></div>
         <div class="bank-note">입금하실 때 <b>받으시는 분 성함</b>으로 넣어주시면 확인이 빨라요.</div>
       </div>
@@ -496,6 +502,19 @@ function openPostcode(){
 
 document.getElementById('largeTextToggle').addEventListener('change', (e) => {
   document.body.classList.toggle('large-text', e.target.checked);
+});
+
+document.getElementById('copyAccountBtn').addEventListener('click', (e) => {
+  const btn = e.currentTarget;
+  navigator.clipboard.writeText(btn.dataset.copy).then(() => {
+    const original = btn.textContent;
+    btn.textContent = '복사됨';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove('copied');
+    }, 1500);
+  });
 });
 
 // ---- 홈 화면에 추가 (PWA 설치) ----
