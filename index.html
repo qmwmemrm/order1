@@ -335,6 +335,10 @@
       <span>📲 홈 화면에 추가하고 편하게 주문하기</span>
     </button>
 
+    <button type="button" class="text-toggle" onclick="openLookupView()">
+      <span>📦 주문번호로 내 주문 조회하기</span>
+    </button>
+
     <section>
       <div class="eyebrow">떡 종류 선택</div>
       <div class="free-ship-banner">🚚 5만원 이상 주문 시 <b>무료배송</b>이에요!</div>
@@ -410,7 +414,21 @@
       </div>
     </section>
 
-    <div class="demo-tag">이건 체험용 데모 화면이에요 — 계좌 정보는 예시입니다</div>
+  </div>
+
+  <div class="view" id="lookupView">
+    <header style="padding-top:26px;">
+      <h1 style="font-size:22px;">내 주문 조회</h1>
+      <p>주문번호 6자리를 입력해주세요</p>
+    </header>
+    <section>
+      <div class="field">
+        <input type="text" id="lookupOrderNumber" inputmode="numeric" maxlength="6" placeholder="예: 482193">
+      </div>
+      <button type="button" class="submit-btn" style="width:100%;" onclick="doOrderLookup()">조회하기</button>
+      <div id="lookupResult" style="margin-top:20px;"></div>
+      <button type="button" class="back-btn" style="width:100%; margin-top:16px;" onclick="showView('orderView')">떡 고르러 돌아가기</button>
+    </section>
   </div>
 
   <div class="view" id="reviewView">
@@ -750,6 +768,52 @@ function buildProductText(){
 function showView(id){
   document.querySelectorAll('.view').forEach(v => v.classList.remove('show'));
   document.getElementById(id).classList.add('show');
+}
+
+function openLookupView(){
+  document.getElementById('lookupOrderNumber').value = '';
+  document.getElementById('lookupResult').innerHTML = '';
+  showView('lookupView');
+  window.scrollTo(0, 0);
+}
+
+async function doOrderLookup(){
+  const input = document.getElementById('lookupOrderNumber');
+  const resultBox = document.getElementById('lookupResult');
+  const orderNumber = input.value.trim();
+
+  if (!/^\d{6}$/.test(orderNumber)) {
+    resultBox.innerHTML = `<div class="review-notice">주문번호 6자리 숫자를 정확히 입력해주세요.</div>`;
+    return;
+  }
+  if (!GOOGLE_SCRIPT_URL) {
+    resultBox.innerHTML = `<div class="review-notice">데모 화면이라 실제 조회는 안 돼요.</div>`;
+    return;
+  }
+
+  resultBox.innerHTML = `<div class="review-notice">조회 중...</div>`;
+
+  try {
+    const res = await fetch(`${GOOGLE_SCRIPT_URL}?action=lookupOrder&orderNumber=${encodeURIComponent(orderNumber)}`);
+    const data = await res.json();
+    if (!data.found) {
+      resultBox.innerHTML = `<div class="review-notice">${data.message || '해당 번호의 주문을 찾을 수 없어요.'}</div>`;
+      return;
+    }
+    resultBox.innerHTML = `
+      <div class="review-card" style="text-align:left;">
+        <div class="review-row"><span class="k">받으시는 분</span><span class="v">${data.receiver}</span></div>
+        <div class="review-row"><span class="k">상품</span><span class="v">${data.product}</span></div>
+        <div class="review-row"><span class="k">금액</span><span class="v">${Number(data.amount).toLocaleString()}원</span></div>
+        <div class="review-row"><span class="k">접수일시</span><span class="v">${data.receivedAt}</span></div>
+        ${data.shipDate ? `<div class="review-row"><span class="k">받고싶은 날짜</span><span class="v">${data.shipDate}</span></div>` : ''}
+        <div class="review-row"><span class="k">배송지역</span><span class="v">${data.addressMasked}</span></div>
+        <div class="review-row"><span class="k">입금 상태</span><span class="v">${data.paid ? '입금 확인됨 ✅' : '입금 확인 중'}</span></div>
+      </div>
+    `;
+  } catch (err) {
+    resultBox.innerHTML = `<div class="review-notice">조회 중 문제가 생겼어요. 다시 시도해주세요.</div>`;
+  }
 }
 
 function goToReview(){

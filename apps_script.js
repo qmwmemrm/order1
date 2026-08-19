@@ -55,11 +55,15 @@ function doPost(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// 브라우저에서 이 URL로 그냥 접속했을 때(GET) 확인용 응답 + 입금 자동확인 처리(?action=confirmPayment)
+// 브라우저에서 이 URL로 그냥 접속했을 때(GET) 확인용 응답 + 입금 자동확인(?action=confirmPayment)
+// + 손님 주문조회(?action=lookupOrder)
 function doGet(e) {
   var p = (e && e.parameter) || {};
   if (p.action === "confirmPayment") {
     return confirmPaymentByAmount(p);
+  }
+  if (p.action === "lookupOrder") {
+    return lookupOrderByNumber(p);
   }
   return ContentService
     .createTextOutput("시골손맛 주문 접수 서버가 정상 작동 중입니다.")
@@ -139,6 +143,59 @@ function confirmPaymentByAmount(p) {
 
 function jsonOut(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+// 손님이 "주문조회" 화면에서 주문번호(6자리)만 입력하면 그 주문 하나만 찾아서 알려줌.
+// 시트 전체를 브라우저로 내려보내면 다른 손님 정보까지 다 노출되니까, 여기서 딱 그 한 건만
+// 골라서 돌려줌. 주소도 전체 다 보여주지 않고 앞부분(시/군/구 정도)만 마스킹해서 줌.
+function lookupOrderByNumber(p) {
+  var result = { found: false };
+  var orderNumber = String(p.orderNumber || "").trim();
+  if (!/^\d{6}$/.test(orderNumber)) {
+    result.message = "주문번호는 숫자 6자리예요";
+    return jsonOut(result);
+  }
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("주문");
+  if (!sheet) {
+    result.message = "주문 시트 없음";
+    return jsonOut(result);
+  }
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    result.message = "해당 번호의 주문을 찾을 수 없어요";
+    return jsonOut(result);
+  }
+
+  var data = sheet.getRange(2, 1, lastRow - 1, 18).getValues();
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    if (String(row[17]) === orderNumber) { // R열: 주문번호
+      result.found = true;
+      result.receiver = row[1];                          // 수취인명
+      result.product = row[2];                            // 옵션정보
+      result.amount = row[13];                            // 합계금액
+      result.shipDate = row[11] || "";                    // 발송예정일(고객 지정, 문자열)
+      result.receivedAt = formatDateVal_(row[12]);         // 접수시각
+      result.paid = row[16] === true;                      // 입금확인
+      result.addressMasked = maskAddress_(row[6]);          // 배송주소(일부만)
+      return jsonOut(result);
+    }
+  }
+  result.message = "해당 번호의 주문을 찾을 수 없어요";
+  return jsonOut(result);
+}
+
+function maskAddress_(addr) {
+  var parts = String(addr || "").trim().split(/\s+/);
+  return parts.slice(0, 2).join(" ") + (parts.length > 2 ? " ..." : "");
+}
+
+function formatDateVal_(v) {
+  if (Object.prototype.toString.call(v) === "[object Date]") {
+    return Utilities.formatDate(v, "Asia/Seoul", "yyyy-MM-dd HH:mm");
+  }
+  return String(v || "");
 }
 
 // 시트를 보기 편하게 서식 적용 (헤더 색칠+고정, 열 너비, 줄바꿈, 금액/날짜 서식, 줄무늬 배경).
