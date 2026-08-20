@@ -1142,7 +1142,7 @@ async function cancelOrder(orderNumber){
   await doOrderLookup(); // 다시 조회해서 "취소된 주문"으로 바뀌었는지(=성공) 확인
 }
 
-function goToReview(){
+async function goToReview(){
   const name = document.getElementById('name').value.trim();
   const phone = document.getElementById('phone').value.trim();
   const address = document.getElementById('address').value.trim();
@@ -1173,6 +1173,27 @@ function goToReview(){
   if (Object.keys(selections).length === 0) {
     alert('떡을 하나 이상 골라주세요.');
     return;
+  }
+
+  // 최종 "네, 이대로 주문할게요" 버튼은 눌렀을 때 바로 반응해야 해서(기다림 없이), 중복주문
+  // 확인은 그 전 단계인 여기(검토화면으로 넘어가기 직전)에서 미리 해둠. Apps Script 응답이
+  // 느릴 수 있어서 3초 넘으면 그냥 확인 없이 진행함(편의 기능이라 실패해도 안전).
+  if (!editOrderNumber && GOOGLE_SCRIPT_URL) {
+    try {
+      const checkRes = await Promise.race([
+        fetch(`${GOOGLE_SCRIPT_URL}?action=checkRecent&name=${encodeURIComponent(name)}&phone=${encodeURIComponent(phone)}&address=${encodeURIComponent(address)}`),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('slow')), 3000)),
+      ]);
+      const checkData = await checkRes.json();
+      if (checkData.found) {
+        const wantsEdit = confirm(
+          `24시간 내 같은 정보로 주문(${checkData.orderNumber} / ${checkData.productText})하신 기록이 있어요.\n중복 실수면 "확인"(수정), 새 주문이면 "취소"`
+        );
+        if (wantsEdit) editOrderNumber = checkData.orderNumber;
+      }
+    } catch (err) {
+      // 3초 넘게 걸렸거나 네트워크 문제 - 중복확인은 건너뛰고 그냥 새 주문으로 진행함
+    }
   }
 
   document.getElementById('reviewBuyerCard').style.display = sameParty ? 'none' : 'block';
@@ -1211,7 +1232,7 @@ function backToOrder(){
   showView('orderView');
 }
 
-async function submitOrder(){
+function submitOrder(){
   const total = calcTotal();
   const nameVal = document.getElementById('name').value.trim();
   const phoneVal = document.getElementById('phone').value.trim();
@@ -1229,28 +1250,8 @@ async function submitOrder(){
     ? false
     : (knownBuyerForMarketing ? knownBuyerForMarketing === '동의' : document.getElementById('marketingConsent').checked);
 
-  // 이미 "기존 주문 수정" 모드면 다시 물어볼 필요 없음. 새 주문일 때만, 최근 1시간 안에
-  // 같은 이름+연락처+주소로 접수된 주문이 있는지 확인해서 실수로 중복 주문하는 걸 막아줌.
-  // Apps Script 응답이 6~20초 걸릴 때가 있어서(구글 쪽 리다이렉트 지연), 이 확인 때문에
-  // 접수 자체가 느려지면 안 됨 - 3초 안에 응답 없으면 그냥 확인 없이 새 주문으로 진행함
-  // (중복확인은 편의 기능이지 필수 기능이 아니라서 "안전하게 실패"해도 됨).
-  if (!editOrderNumber && GOOGLE_SCRIPT_URL) {
-    try {
-      const checkRes = await Promise.race([
-        fetch(`${GOOGLE_SCRIPT_URL}?action=checkRecent&name=${encodeURIComponent(nameVal)}&phone=${encodeURIComponent(phoneVal)}&address=${encodeURIComponent(addressVal)}`),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('slow')), 3000)),
-      ]);
-      const checkData = await checkRes.json();
-      if (checkData.found) {
-        const wantsEdit = confirm(
-          `24시간 내 같은 정보로 주문(${checkData.orderNumber} / ${checkData.productText})하신 기록이 있어요.\n중복 실수면 "확인"(수정), 새 주문이면 "취소"`
-        );
-        if (wantsEdit) editOrderNumber = checkData.orderNumber;
-      }
-    } catch (err) {
-      // 3초 넘게 걸렸거나 네트워크 문제 - 중복확인은 건너뛰고 그냥 새 주문으로 진행함
-    }
-  }
+  // 중복주문 확인은 goToReview()에서 검토화면으로 넘어가기 전에 이미 끝냈으므로 여기선
+  // 다시 안 함 - 이 함수(최종 제출)는 눌렀을 때 바로 반응해야 해서 기다리는 게 없어야 함.
 
   // 수정 모드면 기존 주문번호를 그대로 쓰고, 새 주문이면 6자리 랜덤 주문번호를 새로 만듦 -
   // 서버 응답을 못 읽는 구조(no-cors)라 여기서 미리 만들어서 접수 데이터에 같이 실어보내고,
@@ -1278,10 +1279,6 @@ async function submitOrder(){
     submittedAt: new Date().toISOString(),
   };
 
-  const finalBtn = document.getElementById('finalSubmitBtn');
-  finalBtn.disabled = true;
-  finalBtn.textContent = '접수하는 중...';
-
   const finish = () => {
     document.getElementById('finalOrderNumber').textContent = orderNumber;
     document.getElementById('copyOrderNumberBtn').dataset.copy = orderNumber;
@@ -1289,8 +1286,6 @@ async function submitOrder(){
     document.getElementById('finalTotal').textContent = total.toLocaleString() + '원';
     document.getElementById('reviewBar').style.display = 'none';
     showView('confirmView');
-    finalBtn.disabled = false;
-    finalBtn.textContent = '네, 이대로 주문할게요';
     editOrderNumber = null; // 접수 끝났으니 다음 주문은 다시 "새 주문"으로
 
     // 이번에 실제로 동의 절차를 거쳤으니(직접 체크했든, 예전 동의를 재사용했든) 이 기기에
@@ -1317,32 +1312,17 @@ async function submitOrder(){
   }
 
   // Apps Script exec URL은 리다이렉트를 거치느라 응답이 6~20초씩 걸릴 때가 있음(구글 쪽
-  // 자체 지연이라 서버 코드로는 못 줄임). 어차피 no-cors라 응답 성공 여부도 못 읽으니,
-  // 오래 기다리게 두지 말고 3초 지나면 백그라운드에서 계속 보내지게 두고 화면은 먼저 넘김.
-  // 진짜 네트워크가 끊긴 경우엔 보통 3초 안에 바로 실패해서 알림이 뜸.
-  const sendPromise = fetch(GOOGLE_SCRIPT_URL, {
+  // 자체 지연이라 서버 코드로는 못 줄임). "네, 이대로 주문할게요"는 누르자마자 바로
+  // 반응해야 하니 응답을 아예 기다리지 않고, 전송은 백그라운드로 던져둔 채 화면부터
+  // 즉시 넘김 - 어차피 no-cors라 응답 성공 여부를 읽을 수도 없어서 기다려도 의미가 없음.
+  fetch(GOOGLE_SCRIPT_URL, {
     method: 'POST',
     mode: 'no-cors',
     headers: { 'Content-Type': 'text/plain' },
     body: JSON.stringify(orderData),
-  });
-  sendPromise.catch((err) => console.error('주문 전송 실패(백그라운드):', err));
+  }).catch((err) => console.error('주문 전송 실패(백그라운드):', err));
 
-  try {
-    await Promise.race([
-      sendPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('slow')), 3000)),
-    ]);
-    finish();
-  } catch (err) {
-    if (err.message === 'slow') {
-      finish();
-      return;
-    }
-    alert('접수 중 문제가 생겼어요. 다시 시도해주세요.');
-    finalBtn.disabled = false;
-    finalBtn.textContent = '네, 이대로 주문할게요';
-  }
+  finish();
 }
 
 function resetOrder(){
